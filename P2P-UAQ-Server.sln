@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.6.33829.357
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cluster-Admin", "Cluster-Admin.csproj", "{42DBAF4D-8575-4A12-92BE-3C54E62356CF}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "P2P-UAQ-Server", "P2P-UAQ-Server.csproj", "{334543FE-A7AF-4934-AD5E-F07E70D4825C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -11,15 +11,15 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{42DBAF4D-8575-4A12-92BE-3C54E62356CF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{42DBAF4D-8575-4A12-92BE-3C54E62356CF}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{42DBAF4D-8575-4A12-92BE-3C54E62356CF}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{42DBAF4D-8575-4A12-92BE-3C54E62356CF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{334543FE-A7AF-4934-AD5E-F07E70D4825C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{334543FE-A7AF-4934-AD5E-F07E70D4825C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{334543FE-A7AF-4934-AD5E-F07E70D4825C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{334543FE-A7AF-4934-AD5E-F07E70D4825C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {9F400AFB-979F-4E9C-BF5D-0DE8ABD4C2ED}
+		SolutionGuid = {35518478-3633-446C-BF4B-B0C6D2361304}
 	EndGlobalSection
 EndGlobal
