@@ -8,13 +8,10 @@ namespace P2P_UAQ_Server.Models
 {
     public enum MessageType
     {
-        UserConnected = 1,
-        UserDisconnected = 2,
-        Message,
-        ChatRequest,
-        ChatCloseRequest,
-        ChatMessage,
-        File,
-		UsernameInUse,
+        User,
+        Processor,
+        Data,
+        ProcessedData,
+        Status
     }
 }

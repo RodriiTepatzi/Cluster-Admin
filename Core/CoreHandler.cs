@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
 using Newtonsoft.Json;
 using System.Threading.Tasks;
 using System.IO;
@@ -13,7 +12,7 @@ using P2P_UAQ_Server.Core.Events;
 using P2P_UAQ_Server.ViewModels;
 using P2P_UAQ_Server.Views;
 using System.Windows;
-using FFmpeg.AutoGen;
+using FFMpegCore;
 
 
 namespace P2P_UAQ_Server.Core
@@ -25,10 +24,32 @@ namespace P2P_UAQ_Server.Core
 		private int _serverPort;
 		private int _maxConnections;
 		private TcpListener? _server;
+        private Queue<Connection> _connectionsQueue = new Queue<Connection>();
 		private List<Connection> _connections = new List<Connection>();
 
-		// datos conexiones 
-		private TcpClient? _client;
+        // datos de path
+
+        private static string ffmpegPathString = "ffmpeg.exe"; // asumido cmo variable del sistema
+
+        public static string inputPath = "C:\\Users\\gr_mi\\Desktop\\Ing en Software\\5to semestre\\Sistemas Distribuidos\\Proyectos\\Proyecto 3\\VideoTextMix\\Resources\\memePingu.mp4";
+        public static string outputPath = "C:\\Users\\gr_mi\\Desktop\\Ing en Software\\5to semestre\\Sistemas Distribuidos\\Proyectos\\Proyecto 3\\VideoTextMix\\Resources";
+
+        public static string? mainPath;
+        public static string? processedImgsPath;
+        public static string framesPath = "C:\\Users\\gr_mi\\Desktop\\Ing en Software\\5to semestre\\Sistemas Distribuidos\\Proyectos\\Proyecto 3\\VideoTextMix\\Resources\\frames";
+        public static string audioPath = "C:\\Users\\gr_mi\\Desktop\\Ing en Software\\5to semestre\\Sistemas Distribuidos\\Proyectos\\Proyecto 3\\VideoTextMix\\Resources\\audio";
+
+
+        // datos video
+
+        public static double videoFramerate;
+        public static string? videoName;
+        public static string? videoCodec;
+        public static string? videoExtension;
+        public static string? videoAudioExtension;
+
+        // datos conexiones 
+        private TcpClient? _client;
 		private Connection _newConnection = new Connection(); // Variable reutilizable para los usuarios conectados
 
 		private bool _isRunning = false;
@@ -55,7 +76,7 @@ namespace P2P_UAQ_Server.Core
             ServerStatusUpdated?.Invoke(status);
         }
 
-        // ****
+
 
         // PARA INICIAR SERVIDOR
         public async void InitializeLocalServer(string ip, int port, string maxConnections) 
@@ -199,37 +220,225 @@ namespace P2P_UAQ_Server.Core
             }
         }
 
-        public void SendConnectionListToAll(Connection receiver, Connection connection)
+
+
+        // ******* MÉTODOS DE CLUSTER
+
+        public static void CreateTempFolders()
         {
-			var message = new Message
-			{
-				Type = MessageType.UserConnected,
-				Data = JsonConvert.SerializeObject(connection),
-			};
+            // create a main tmp folder
 
-			var json = JsonConvert.SerializeObject(message);
+            string tmpPathMain = Path.GetTempPath();
+            string tmpFolderMain = Path.Combine(tmpPathMain, "MAIN_VIDEOTEST");
 
-			receiver.StreamWriter!.WriteLine(json);
-			receiver.StreamWriter!.Flush();
-		}
+            Directory.CreateDirectory(tmpFolderMain);
+
+            Console.WriteLine($"Main tmp folder: {tmpFolderMain}");
 
 
-		public void SendDisconnectedUserToAll(Connection receiver, Connection connection)
+            // create subfolders in main folder for frames, audio and processed images
+
+            string tmpFolderFrames = Path.Combine(tmpFolderMain, "frames");
+            string tmpFolderAudio = Path.Combine(tmpFolderMain, "audio");
+            string tmpFolderProcessedImgs = Path.Combine(tmpFolderMain, "processed_imgs");
+
+            Directory.CreateDirectory(tmpFolderAudio);
+            Directory.CreateDirectory(tmpFolderFrames);
+            Directory.CreateDirectory(tmpFolderProcessedImgs);
+
+            Console.WriteLine($"Tmp Audio: {tmpFolderAudio}");
+            Console.WriteLine($"Tmp Frames: {tmpFolderFrames}");
+            Console.WriteLine($"Tmp Processed Images: {tmpFolderProcessedImgs}");
+
+            mainPath = tmpFolderMain;
+            framesPath = tmpFolderFrames;
+            audioPath = tmpFolderAudio;
+            processedImgsPath = tmpFolderProcessedImgs;
+
+        }
+
+
+
+        public static void DeleteTempFolders()
         {
-			var message = new Message
-			{
-				Type = MessageType.UserDisconnected,
-				Data = JsonConvert.SerializeObject(connection),
-			};
+            Directory.Delete(framesPath, true);
+            Directory.Delete(audioPath, true);
+            Directory.Delete(processedImgsPath, true);
+            Directory.Delete(mainPath, true);
+        }
 
-			var json = JsonConvert.SerializeObject(message);
 
-			receiver.StreamWriter!.WriteLine(json);
-			receiver.StreamWriter!.Flush();
 
-		}
+        public static void GetVideoFrames(string inputPath, string framesPath)
+        {
+            FFMpegArguments
+                .FromFileInput(inputPath)
+                .OutputToFile($"{framesPath}\\frame%08d.bmp") // indicates the nomeclature i.e. 15th frame = frame00000015.bmp
+                .ProcessSynchronously();
 
-		public void StopServer()
+            Console.WriteLine("Imágenes extraídas con éxito.");
+        }
+
+
+
+        public static (double, string, string, string, string) GetVideoMeta(string inputPath)
+        {
+
+            IMediaAnalysis mediaInfo = FFProbe.Analyse(inputPath);
+
+            // if not data stablish default values
+
+            double framerate = mediaInfo.PrimaryVideoStream?.FrameRate ?? 30;
+            string name = Path.GetFileNameWithoutExtension(inputPath) ?? "Unknown_Video";
+            string codec = mediaInfo.PrimaryVideoStream?.CodecName ?? "h264";
+            string videoExtension = Path.GetExtension(inputPath).TrimStart('.') ?? "mp4";
+            string audioExtension = mediaInfo.PrimaryAudioStream?.CodecName ?? "mp3";
+
+            Console.WriteLine("Metada extradida");
+
+            return (framerate, name, codec, videoExtension, audioExtension);
+        }
+
+
+
+        public static void GetVideoAudio(string inputPath, string outputAudioPath, string audioExtension)
+        {
+            // saving audio according to audio format compatible with video format
+
+            string arguments = $"-i \"{inputPath}\" -vn -acodec copy \"{outputAudioPath}\\audio.{audioExtension}\"";
+
+            Process ffmpegProcess = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = ffmpegPathString,
+                    Arguments = arguments,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardError = true
+                }
+            };
+
+            ffmpegProcess.Start();
+            ffmpegProcess.WaitForExit();
+        }
+
+
+
+        public static void CreateVideoWithFramesAndSound(string imagePath, string audioInputPath, string videoOutputPath, double frameRate, string videoExtension, string audioExtension)
+        {
+            string arguments = $"-framerate {frameRate} -i \"{imagePath}\\frame%08d.bmp\" -i \"{audioInputPath}\\audio.{audioExtension}\" -c:v libx264 -pix_fmt yuv420p -c:a {audioExtension} -strict experimental \"{videoOutputPath}\\NEW_VIDEO.{videoExtension}\"";
+
+            Process ffmpeg = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = ffmpegPathString,
+                    Arguments = arguments,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardError = true
+                }
+            };
+
+            ffmpeg.Start();
+            string errorOutput = ffmpeg.StandardError.ReadToEnd();
+            ffmpeg.WaitForExit();
+
+            if (!string.IsNullOrEmpty(errorOutput))
+            {
+                Console.WriteLine("FFmpeg Error Output:");
+                Console.WriteLine(errorOutput);
+            }
+        }
+
+
+
+        public static List<byte[]> GetImagesInFolder(string folderPath)
+        {
+            List<byte[]> imageBytesList = new List<byte[]>();
+
+            try
+            {
+                string[] imageFiles = Directory.GetFiles(folderPath, "*.*", SearchOption.TopDirectoryOnly)
+                    .Where(s => s.EndsWith(".bmp")).ToArray();
+
+                foreach (string imagePath in imageFiles)
+                {
+                    byte[] imageBytes = File.ReadAllBytes(imagePath);
+                    imageBytesList.Add(imageBytes);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"An error occurred: {ex.Message}");
+            }
+
+            return imageBytesList;
+        }
+
+
+
+        public static byte[] CompressByteArray(byte[] media)
+        {
+            using (MemoryStream memoryStream = new MemoryStream())
+            {
+                using (GZipStream gzipStream = new GZipStream(memoryStream, CompressionMode.Compress, true))
+                {
+                    gzipStream.Write(media, 0, media.Length);
+                }
+
+                return memoryStream.ToArray();
+            }
+        }
+
+
+
+        public static byte[] DecompressByteArray(byte[] compressedMedia)
+        {
+            using (MemoryStream compressedStream = new MemoryStream(compressedMedia))
+            using (GZipStream decompressionStream = new GZipStream(compressedStream, CompressionMode.Decompress))
+            using (MemoryStream decompressedStream = new MemoryStream())
+            {
+                decompressionStream.CopyTo(decompressedStream);
+                return decompressedStream.ToArray();
+            }
+        }
+
+
+
+        public static void CheckCompressionOfImagesInFolder(string folderPath)
+        {
+            string[] imageFiles = Directory.GetFiles(folderPath, "*.*", SearchOption.TopDirectoryOnly)
+                    .Where(s => s.EndsWith(".bmp")).ToArray();
+
+            double sumCompressed = 0;
+            double sumDecompressed = 0;
+
+            foreach (string imagePath in imageFiles)
+            {
+                byte[] imageBytes = File.ReadAllBytes(imagePath);
+                byte[] imageCompressed = CompressByteArray(imageBytes);
+                byte[] imageDecompressed = DecompressByteArray(imageCompressed);
+                sumCompressed += GetSize(imageCompressed);
+                sumDecompressed += GetSize(imageDecompressed);
+
+                Console.WriteLine($"Original: {GetSize(imageBytes)}, Comprimida: {GetSize(imageCompressed)}, Descomprimida: {GetSize(imageDecompressed)}");
+            }
+
+            Console.WriteLine($"Promedio sin comprimir: {sumDecompressed / imageFiles.Length}, Promedio comprimido: {sumCompressed / imageFiles.Length}, Mejora: {sumCompressed / sumDecompressed}");
+        }
+
+
+        public static int GetSize(byte[] image)
+        {
+            return sizeof(byte) * image.Length;
+
+        }
+
+        // ******* MÉTODOS DE CLUSTER
+
+        public void StopServer()
         {
             if (_isRunning)
             {
