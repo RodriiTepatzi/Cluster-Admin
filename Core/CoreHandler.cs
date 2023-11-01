@@ -13,7 +13,8 @@ using P2P_UAQ_Server.ViewModels;
 using P2P_UAQ_Server.Views;
 using System.Windows;
 using FFMpegCore;
-
+using System.Diagnostics;
+using System.IO.Compression;
 
 namespace P2P_UAQ_Server.Core
 {
@@ -24,35 +25,35 @@ namespace P2P_UAQ_Server.Core
 		private int _serverPort;
 		private int _maxConnections;
 		private TcpListener? _server;
+        private bool _isRunning = false;
         private Queue<Connection> _connectionsQueue = new Queue<Connection>();
 		private List<Connection> _connections = new List<Connection>();
 
         // datos de path
 
-        private static string ffmpegPathString = "ffmpeg.exe"; // asumido cmo variable del sistema
+        private string ffmpegPathString = "ffmpeg.exe"; // as os system variable
 
-        public static string inputPath = "C:\\Users\\gr_mi\\Desktop\\Ing en Software\\5to semestre\\Sistemas Distribuidos\\Proyectos\\Proyecto 3\\VideoTextMix\\Resources\\memePingu.mp4";
-        public static string outputPath = "C:\\Users\\gr_mi\\Desktop\\Ing en Software\\5to semestre\\Sistemas Distribuidos\\Proyectos\\Proyecto 3\\VideoTextMix\\Resources";
+        public string inputPath = "C:\\CLUSTER_FOLDER\\video.mp4"; // for received video
+        public string outputPath = "C:\\CLUSTER_FOLDER";
 
-        public static string? mainPath;
-        public static string? processedImgsPath;
-        public static string framesPath = "C:\\Users\\gr_mi\\Desktop\\Ing en Software\\5to semestre\\Sistemas Distribuidos\\Proyectos\\Proyecto 3\\VideoTextMix\\Resources\\frames";
-        public static string audioPath = "C:\\Users\\gr_mi\\Desktop\\Ing en Software\\5to semestre\\Sistemas Distribuidos\\Proyectos\\Proyecto 3\\VideoTextMix\\Resources\\audio";
+        public string? mainPath; // temporal main folder 
+        public string? processedImgsPath; // subfolder in main folder, for images from SP
+        public string? framesPath; // subfolder in main folder, for frames
+        public string? audioPath; // subfolder in main folder, for audio
 
 
         // datos video
 
-        public static double videoFramerate;
-        public static string? videoName;
-        public static string? videoCodec;
-        public static string? videoExtension;
-        public static string? videoAudioExtension;
+        public double videoFramerate;
+        public string? videoName;
+        public string? videoCodec;
+        public string? videoExtension;
+        public string? videoAudioExtension;
 
         // datos conexiones 
         private TcpClient? _client;
 		private Connection _newConnection = new Connection(); // Variable reutilizable para los usuarios conectados
 
-		private bool _isRunning = false;
 
 		public event EventHandler<PrivateMessageReceivedEventArgs>? PrivateMessageReceived;
 		public event EventHandler<MessageReceivedEventArgs>? PublicMessageReceived;
@@ -81,7 +82,10 @@ namespace P2P_UAQ_Server.Core
         // PARA INICIAR SERVIDOR
         public async void InitializeLocalServer(string ip, int port, string maxConnections) 
 		{
-			_serverIP = ip;
+			
+            
+            
+            _serverIP = ip;
 			_serverPort = port;
 			_maxConnections = int.Parse(maxConnections);
 
@@ -173,6 +177,8 @@ namespace P2P_UAQ_Server.Core
 			}
 		}
         
+
+
         public async void ListenToConnection()
         {
             
@@ -224,7 +230,13 @@ namespace P2P_UAQ_Server.Core
 
         // ******* MÉTODOS DE CLUSTER
 
-        public static void CreateTempFolders()
+
+
+
+
+
+
+        public void CreateTempFolders()
         {
             // create a main tmp folder
 
@@ -259,7 +271,7 @@ namespace P2P_UAQ_Server.Core
 
 
 
-        public static void DeleteTempFolders()
+        public void DeleteTempFolders()
         {
             Directory.Delete(framesPath, true);
             Directory.Delete(audioPath, true);
@@ -269,7 +281,7 @@ namespace P2P_UAQ_Server.Core
 
 
 
-        public static void GetVideoFrames(string inputPath, string framesPath)
+        public void GetVideoFrames(string inputPath, string framesPath)
         {
             FFMpegArguments
                 .FromFileInput(inputPath)
@@ -281,7 +293,7 @@ namespace P2P_UAQ_Server.Core
 
 
 
-        public static (double, string, string, string, string) GetVideoMeta(string inputPath)
+        public (double, string, string, string, string) GetVideoMeta(string inputPath)
         {
 
             IMediaAnalysis mediaInfo = FFProbe.Analyse(inputPath);
@@ -301,7 +313,7 @@ namespace P2P_UAQ_Server.Core
 
 
 
-        public static void GetVideoAudio(string inputPath, string outputAudioPath, string audioExtension)
+        public void GetVideoAudio(string inputPath, string outputAudioPath, string audioExtension)
         {
             // saving audio according to audio format compatible with video format
 
@@ -325,7 +337,7 @@ namespace P2P_UAQ_Server.Core
 
 
 
-        public static void CreateVideoWithFramesAndSound(string imagePath, string audioInputPath, string videoOutputPath, double frameRate, string videoExtension, string audioExtension)
+        public void CreateVideoWithFramesAndSound(string imagePath, string audioInputPath, string videoOutputPath, double frameRate, string videoExtension, string audioExtension)
         {
             string arguments = $"-framerate {frameRate} -i \"{imagePath}\\frame%08d.bmp\" -i \"{audioInputPath}\\audio.{audioExtension}\" -c:v libx264 -pix_fmt yuv420p -c:a {audioExtension} -strict experimental \"{videoOutputPath}\\NEW_VIDEO.{videoExtension}\"";
 
@@ -354,7 +366,7 @@ namespace P2P_UAQ_Server.Core
 
 
 
-        public static List<byte[]> GetImagesInFolder(string folderPath)
+        public List<byte[]> GetImagesInFolder(string folderPath)
         {
             List<byte[]> imageBytesList = new List<byte[]>();
 
@@ -379,7 +391,7 @@ namespace P2P_UAQ_Server.Core
 
 
 
-        public static byte[] CompressByteArray(byte[] media)
+        public byte[] CompressByteArray(byte[] media)
         {
             using (MemoryStream memoryStream = new MemoryStream())
             {
@@ -394,7 +406,7 @@ namespace P2P_UAQ_Server.Core
 
 
 
-        public static byte[] DecompressByteArray(byte[] compressedMedia)
+        public byte[] DecompressByteArray(byte[] compressedMedia)
         {
             using (MemoryStream compressedStream = new MemoryStream(compressedMedia))
             using (GZipStream decompressionStream = new GZipStream(compressedStream, CompressionMode.Decompress))
@@ -407,7 +419,7 @@ namespace P2P_UAQ_Server.Core
 
 
 
-        public static void CheckCompressionOfImagesInFolder(string folderPath)
+        public void CheckCompressionOfImagesInFolder(string folderPath)
         {
             string[] imageFiles = Directory.GetFiles(folderPath, "*.*", SearchOption.TopDirectoryOnly)
                     .Where(s => s.EndsWith(".bmp")).ToArray();
@@ -430,7 +442,7 @@ namespace P2P_UAQ_Server.Core
         }
 
 
-        public static int GetSize(byte[] image)
+        public int GetSize(byte[] image)
         {
             return sizeof(byte) * image.Length;
 
