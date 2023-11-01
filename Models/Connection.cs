@@ -20,7 +20,7 @@ namespace P2P_UAQ_Server.Models
 		public StreamReader? StreamReader { get; set; }
         
         
-        public string? Nickname { get; set; }
+        //public string? Nickname { get; set; }
         public int Port { get; set; }
         public string? IpAddress { get; set; }
 
@@ -30,7 +30,7 @@ namespace P2P_UAQ_Server.Models
         {
             var dictionary = new Dictionary<string, object>();
 
-            dictionary.Add(nameof(Nickname), string.IsNullOrEmpty(Nickname) ? "" : Nickname);
+            //dictionary.Add(nameof(Nickname), string.IsNullOrEmpty(Nickname) ? "" : Nickname);
             dictionary.Add(nameof(Port), Port);
             dictionary.Add(nameof(IpAddress), string.IsNullOrEmpty(IpAddress) ? "" : IpAddress);
 

@@ -82,9 +82,12 @@ namespace P2P_UAQ_Server.Core
         // PARA INICIAR SERVIDOR
         public async void InitializeLocalServer(string ip, int port, string maxConnections) 
 		{
-			
+            // check if folder for IO video exists
+
+            if (!Directory.Exists(outputPath)) Directory.CreateDirectory(outputPath);
             
-            
+            // create server
+
             _serverIP = ip;
 			_serverPort = port;
 			_maxConnections = int.Parse(maxConnections);
