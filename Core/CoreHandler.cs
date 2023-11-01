@@ -28,6 +28,7 @@ namespace P2P_UAQ_Server.Core
         private bool _isRunning = false;
         private Queue<Connection> _connectionsQueue = new Queue<Connection>();
 		private List<Connection> _connections = new List<Connection>();
+        private Status status = Status.Ready;
 
         // datos de path
 
@@ -450,6 +451,13 @@ namespace P2P_UAQ_Server.Core
         {
             return sizeof(byte) * image.Length;
 
+        }
+
+
+
+        public void UpdateStatus(Status newStatus)
+        {
+            status = newStatus;
         }
 
         // ******* MÉTODOS DE CLUSTER
