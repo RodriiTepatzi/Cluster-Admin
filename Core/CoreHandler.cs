@@ -101,7 +101,8 @@ namespace P2P_UAQ_Server.Core
 			while (true)
 			{
 				_client = await _server.AcceptTcpClientAsync();
-				// guardamos la conexión con sus datos
+
+				// save connection
 
 				_newConnection = new Connection();
 				_newConnection.Stream = _client.GetStream();
@@ -301,7 +302,7 @@ namespace P2P_UAQ_Server.Core
 
             IMediaAnalysis mediaInfo = FFProbe.Analyse(inputPath);
 
-            // if not data stablish default values
+            // if not data return default values
 
             double framerate = mediaInfo.PrimaryVideoStream?.FrameRate ?? 30;
             string name = Path.GetFileNameWithoutExtension(inputPath) ?? "Unknown_Video";

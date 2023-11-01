@@ -6,10 +6,10 @@ using System.Threading.Tasks;
 
 namespace P2P_UAQ_Server.Models
 {
-    public class Message
+    public enum Status
     {
-        public MessageType Type { get; set; }
-        public object? content { get; set; }
-        public Connection? connection { get; set; }
+        Ready,
+        Busy,
+        Waiting,
     }
 }
