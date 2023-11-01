@@ -33,22 +33,22 @@ namespace P2P_UAQ_Server.Core
 
         private string ffmpegPathString = "ffmpeg.exe"; // as os system variable
 
-        public string inputPath = "C:\\CLUSTER_FOLDER\\video.mp4"; // for received video
-        public string outputPath = "C:\\CLUSTER_FOLDER";
+        private string inputPath = "C:\\CLUSTER_FOLDER\\video.mp4"; // for received video
+        private string outputPath = "C:\\CLUSTER_FOLDER";
 
-        public string? mainPath; // temporal main folder 
-        public string? processedImgsPath; // subfolder in main folder, for images from SP
-        public string? framesPath; // subfolder in main folder, for frames
-        public string? audioPath; // subfolder in main folder, for audio
+        private string? mainPath; // temporal main folder 
+        private string? processedImgsPath; // subfolder in main folder, for images from SP
+        private string? framesPath; // subfolder in main folder, for frames
+        private string? audioPath; // subfolder in main folder, for audio
 
 
         // datos video
 
-        public double videoFramerate;
-        public string? videoName;
-        public string? videoCodec;
-        public string? videoExtension;
-        public string? videoAudioExtension;
+        private double videoFramerate;
+        private string? videoName;
+        private string? videoCodec;
+        private string? videoExtension;
+        private string? videoAudioExtension;
 
         // datos conexiones 
         private TcpClient? _client;
