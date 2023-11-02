@@ -184,6 +184,14 @@ namespace P2P_UAQ_Server.Core
 
                 byte[] video = message.Content as byte[];
 
+                File.WriteAllBytes(_inputPath, video);
+
+                CreateTempFolders();
+
+
+
+                DeleteTempFolders();
+                DeleteVideos();
             }
 
             AddWaitingServers();
@@ -308,9 +316,13 @@ namespace P2P_UAQ_Server.Core
 
 
 
-        public void SaveVideo(byte[] video)
-        { 
-            
+        public void DeleteVideos()
+        {
+            string[] videos = Directory.GetFiles(_outputPath);
+            foreach (var v in videos)
+            {
+                File.Delete(v);
+            }
         }
 
 
