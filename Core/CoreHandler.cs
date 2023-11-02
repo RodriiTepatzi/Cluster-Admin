@@ -27,7 +27,7 @@ namespace P2P_UAQ_Server.Core
 		private TcpListener? _server;
         private bool _isRunning = false;
 
-        private Queue<Connection> _clientQueue = new Queue<Connection>();
+        private List<Connection> _clientQueue = new List<Connection>();
         private List<Connection> _serversWaiting = new List<Connection>();
         private List<Connection> _serversWorking = new List<Connection>();
 
@@ -114,8 +114,6 @@ namespace P2P_UAQ_Server.Core
                 _newConnection.StreamReader = new StreamReader(_newConnection.Stream); // stream para recibir
 
 
-                // confirmamos el nombre
-
                 var dataReceived = _newConnection.StreamReader!.ReadLine();
                 var message = JsonConvert.DeserializeObject<Message>(dataReceived!);
                 string? json = message!.Content as string;
@@ -128,11 +126,13 @@ namespace P2P_UAQ_Server.Core
                 _newConnection.Port = convertedData.Port; // puerto
 
 
-                switch (message.Type) {
+                switch (message.Type)
+                {
 
                     case (MessageType.User):
 
-                        _clientQueue.Enqueue(message.connection);
+                        _clientQueue.Add(message.connection); // they gonna wait their turn
+                        SendTurnToClients(_clientQueue); // sends an int 
 
                         break;
 
@@ -142,13 +142,9 @@ namespace P2P_UAQ_Server.Core
 
                         if (_serverStatus == Status.Waiting)
                         {
-                            foreach (var s in _serversWaiting) 
-                            {
-                                _serversWorking.Add(s);
-                            }
+                            AddWaitingServers();
 
-                            _serversWaiting.Clear();
-                            _serverStatus = Status.Ready;
+                            UpdateStatus(Status.Ready);
                         }
 
                         break;
@@ -156,101 +152,45 @@ namespace P2P_UAQ_Server.Core
 
                 if (_serverStatus == Status.Ready)
                 {
-                    _serverStatus = Status.Busy;
-                    ListenToConnection(_clientQueue.Dequeue());
+                    // we gonna work only on the first client in the queue, others wait
+
+                    UpdateStatus(Status.Busy);
+                    Thread thread = new Thread(WorkOnVideo);
+                    thread.Start();
                 }
-
             }
-
-			while (true)
-			{
-				_client = await _server.AcceptTcpClientAsync();
-
-				// save connection
-
-				_newConnection = new Connection();
-				_newConnection.Stream = _client.GetStream();
-				_newConnection.StreamWriter = new StreamWriter(_newConnection.Stream); // stream para enviar
-				_newConnection.StreamReader = new StreamReader(_newConnection.Stream); // stream para recibir
-
-
-				// confirmamos el nombre
-
-				var dataReceived = _newConnection.StreamReader!.ReadLine();
-				var message = JsonConvert.DeserializeObject<Message>(dataReceived!);
-				string? json = message!.Data as string;
-				var convertedData = JsonConvert.DeserializeObject<Connection>(json!);
-
-				_newConnection.Nickname = convertedData!.Nickname;
-				_newConnection.IpAddress = convertedData.IpAddress; // ip
-
-				if (object.Equals(convertedData.IpAddress, "0.0.0.0")) _newConnection.IpAddress = "127.0.0.1";
-
-				_newConnection.Port = convertedData.Port; // puerto
-
-				HandlerOnMessageReceived($"En espera de aprovación de nombre: {_newConnection.Nickname} - {_newConnection.IpAddress}:{_newConnection.Port}.");
-
-				if (message.Type == MessageType.UserConnected)
-				{
-					var existingConnection = _connections.FindAll(c => c.Nickname == _newConnection.Nickname);
-
-					if (existingConnection.Count == 0)
-					{
-						var messageToSend = new Message();
-						messageToSend.Type = MessageType.UsernameInUse;
-						messageToSend.Data = false;
-
-						_newConnection.StreamWriter.WriteLine(JsonConvert.SerializeObject(messageToSend));
-						_newConnection.StreamWriter.Flush();
-
-						_connections.Add(_newConnection);
-
-						HandlerOnMessageReceived("Nombre disponible. Notificando al cliente.");
-						HandlerOnMessageReceived($"Conexión agregada: {_newConnection.IpAddress}:{_newConnection.Port} y notificando a todos.");
-						
-						foreach (Connection c in _connections)
-						{
-							// Se les enviara un mensaje de que x usuario se ha conectado.
-							var msgUserToBeSent = new Message { Type = MessageType.Message, Data = $"{_newConnection.Nickname} se ha conectado." };
-
-							// Enviamos el mensaje al cliente.
-							c.StreamWriter!.WriteLine(JsonConvert.SerializeObject(msgUserToBeSent));
-							c.StreamWriter!.Flush();
-
-							foreach (var con in _connections)
-							{
-								SendConnectionListToAll(c, con);
-							}
-						}
-
-						Thread thread = new Thread(ListenToConnection);
-						thread.Start();
-					}
-					else
-					{
-						// enviar error
-						message = new Message(); // overwrite el mensaje
-						message.Type = MessageType.UsernameInUse;
-						message.Data = true; // envia como dato el nombre en uso
-
-						string messageJson = JsonConvert.SerializeObject(message);
-
-						_newConnection.StreamWriter.WriteLine(messageJson);
-						_newConnection.StreamWriter.Flush();
-
-						HandlerOnMessageReceived($"Conexión rechazada: {_newConnection.IpAddress}:{_newConnection.Port}. Notificando al cliente.");
-					}
-				}
-
-			}
 		}
         
 
 
-        public async void ListenToConnection(Connection connection)
+        public async void WorkOnVideo()
         {
-            
-            Connection connection = _newConnection;
+            // working on the first if queue not empty
+
+            if (_clientQueue.Count > 0)
+            {
+                // chose client to work with
+                
+                Connection connection = _clientQueue[0];
+                _clientQueue.Remove(connection);
+
+                SendStatusToClients(Status.Busy); // to all but not the chosen one
+                SendStatusToChosenClient(Status.Ready, connection);
+
+                // waiting for the video
+
+                var dataReceived = await connection.StreamReader!.ReadLineAsync();
+                var message = JsonConvert.DeserializeObject<Message>(dataReceived);
+
+                byte[] video = message.Content as byte[];
+
+            }
+
+            AddWaitingServers();
+            UpdateStatus(Status.Ready);
+
+
+            // IGNORE
             var connectionOpen = true;
 
             while (connectionOpen) 
@@ -292,6 +232,8 @@ namespace P2P_UAQ_Server.Core
 					connectionOpen = false;
 				}
             }
+            // IGNORE
+
         }
 
 
@@ -300,11 +242,11 @@ namespace P2P_UAQ_Server.Core
 
 
 
-        public void SendBroadcastClients(Status status, MessageType messageType)
+        public void SendStatusToClients(Status status)
         {
             Message message = new Message
             {
-                Type = messageType,
+                Type = MessageType.Status,
                 Content = status,
             };
 
@@ -315,6 +257,60 @@ namespace P2P_UAQ_Server.Core
                 c.StreamWriter?.WriteLine(json);
                 c.StreamWriter?.Flush();
             }
+        }
+
+
+
+        public void AddWaitingServers()
+        {
+            foreach (var s in _serversWaiting)
+            {
+                _serversWorking.Add(s);
+            }
+
+            _serversWaiting.Clear();
+        }
+
+
+        public void SendStatusToChosenClient(Status status, Connection connection)
+        {
+            Message message = new Message 
+            { 
+                Type = MessageType.Status,
+                Content = status,
+            };
+
+            string json = JsonConvert.SerializeObject(message);
+            connection.StreamWriter?.WriteLine(json);
+            connection.StreamWriter?.Flush();
+        }
+
+
+
+        public void SendTurnToClients(List<Connection> connections)
+        {
+            int clientsBeforeYou = 0;
+
+            Message message = new Message
+            {
+                Type = MessageType.Turn,
+            }; 
+
+            foreach (var c in connections)
+            {
+                message.Content = clientsBeforeYou;
+                string json = JsonConvert.SerializeObject(message);
+                c.StreamWriter?.WriteLine(json);
+                c.StreamWriter?.Flush();
+                clientsBeforeYou++;
+            }
+        }
+
+
+
+        public void SaveVideo(byte[] video)
+        { 
+            
         }
 
 
@@ -345,10 +341,10 @@ namespace P2P_UAQ_Server.Core
             Console.WriteLine($"Tmp Frames: {tmpFolderFrames}");
             Console.WriteLine($"Tmp Processed Images: {tmpFolderProcessedImgs}");
 
-            mainPath = tmpFolderMain;
-            framesPath = tmpFolderFrames;
-            audioPath = tmpFolderAudio;
-            processedImgsPath = tmpFolderProcessedImgs;
+            _mainPath = tmpFolderMain;
+            _framesPath = tmpFolderFrames;
+            _audioPath = tmpFolderAudio;
+            _processedImgsPath = tmpFolderProcessedImgs;
 
         }
 
@@ -356,10 +352,10 @@ namespace P2P_UAQ_Server.Core
 
         public void DeleteTempFolders()
         {
-            Directory.Delete(framesPath, true);
-            Directory.Delete(audioPath, true);
-            Directory.Delete(processedImgsPath, true);
-            Directory.Delete(mainPath, true);
+            Directory.Delete(_framesPath, true);
+            Directory.Delete(_audioPath, true);
+            Directory.Delete(_processedImgsPath, true);
+            Directory.Delete(_mainPath, true);
         }
 
 
@@ -406,7 +402,7 @@ namespace P2P_UAQ_Server.Core
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = ffmpegPathString,
+                    FileName = _ffmpegPathString,
                     Arguments = arguments,
                     UseShellExecute = false,
                     CreateNoWindow = true,
@@ -428,7 +424,7 @@ namespace P2P_UAQ_Server.Core
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = ffmpegPathString,
+                    FileName = _ffmpegPathString,
                     Arguments = arguments,
                     UseShellExecute = false,
                     CreateNoWindow = true,
@@ -535,7 +531,7 @@ namespace P2P_UAQ_Server.Core
 
         public void UpdateStatus(Status newStatus)
         {
-            status = newStatus;
+            _serverStatus = newStatus;
         }
 
         // ******* MÉTODOS DE CLUSTER

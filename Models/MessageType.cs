@@ -12,6 +12,7 @@ namespace P2P_UAQ_Server.Models
         Processor,
         Data,
         ProcessedData,
-        Status
+        Status,
+        Turn,
     }
 }
