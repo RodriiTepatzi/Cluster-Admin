@@ -26,30 +26,33 @@ namespace P2P_UAQ_Server.Core
 		private int _maxConnections;
 		private TcpListener? _server;
         private bool _isRunning = false;
-        private Queue<Connection> _connectionsQueue = new Queue<Connection>();
-		private List<Connection> _connections = new List<Connection>();
-        private Status status = Status.Ready;
+
+        private Queue<Connection> _clientQueue = new Queue<Connection>();
+        private List<Connection> _serversWaiting = new List<Connection>();
+        private List<Connection> _serversWorking = new List<Connection>();
+
+        private Status _serverStatus = Status.Waiting;
 
         // datos de path
 
-        private string ffmpegPathString = "ffmpeg.exe"; // as os system variable
+        private string _ffmpegPathString = "ffmpeg.exe"; // as os system variable
 
-        private string inputPath = "C:\\CLUSTER_FOLDER\\video.mp4"; // for received video
-        private string outputPath = "C:\\CLUSTER_FOLDER";
+        private string _inputPath = "C:\\CLUSTER_FOLDER\\video.mp4"; // for received video
+        private string _outputPath = "C:\\CLUSTER_FOLDER";
 
-        private string? mainPath; // temporal main folder 
-        private string? processedImgsPath; // subfolder in main folder, for images from SP
-        private string? framesPath; // subfolder in main folder, for frames
-        private string? audioPath; // subfolder in main folder, for audio
+        private string? _mainPath; // temporal main folder 
+        private string? _processedImgsPath; // subfolder in main folder, for images from SP
+        private string? _framesPath; // subfolder in main folder, for frames
+        private string? _audioPath; // subfolder in main folder, for audio
 
 
         // datos video
 
-        private double videoFramerate;
-        private string? videoName;
-        private string? videoCodec;
-        private string? videoExtension;
-        private string? videoAudioExtension;
+        private double _videoFramerate;
+        private string? _videoName;
+        private string? _videoCodec;
+        private string? _videoExtension;
+        private string? _videoAudioExtension;
 
         // datos conexiones 
         private TcpClient? _client;
@@ -85,7 +88,7 @@ namespace P2P_UAQ_Server.Core
 		{
             // check if folder for IO video exists
 
-            if (!Directory.Exists(outputPath)) Directory.CreateDirectory(outputPath);
+            if (!Directory.Exists(_outputPath)) Directory.CreateDirectory(_outputPath);
             
             // create server
 
@@ -98,6 +101,66 @@ namespace P2P_UAQ_Server.Core
 			_server.Start(_maxConnections);
 
 			HandlerOnMessageReceived($"Server listo y esperando en: {_serverIP}:{_serverPort}");
+
+            while (true) 
+            {
+                _client = await _server.AcceptTcpClientAsync();
+
+                // save connection
+
+                _newConnection = new Connection();
+                _newConnection.Stream = _client.GetStream();
+                _newConnection.StreamWriter = new StreamWriter(_newConnection.Stream); // stream para enviar
+                _newConnection.StreamReader = new StreamReader(_newConnection.Stream); // stream para recibir
+
+
+                // confirmamos el nombre
+
+                var dataReceived = _newConnection.StreamReader!.ReadLine();
+                var message = JsonConvert.DeserializeObject<Message>(dataReceived!);
+                string? json = message!.Content as string;
+                var convertedData = JsonConvert.DeserializeObject<Connection>(json!);
+
+                _newConnection.IpAddress = convertedData.IpAddress; // ip
+
+                if (object.Equals(convertedData.IpAddress, "0.0.0.0")) _newConnection.IpAddress = "127.0.0.1";
+
+                _newConnection.Port = convertedData.Port; // puerto
+
+
+                switch (message.Type) {
+
+                    case (MessageType.User):
+
+                        _clientQueue.Enqueue(message.connection);
+
+                        break;
+
+                    case (MessageType.Processor):
+
+                        _serversWaiting.Add(message.connection);
+
+                        if (_serverStatus == Status.Waiting)
+                        {
+                            foreach (var s in _serversWaiting) 
+                            {
+                                _serversWorking.Add(s);
+                            }
+
+                            _serversWaiting.Clear();
+                            _serverStatus = Status.Ready;
+                        }
+
+                        break;
+                }
+
+                if (_serverStatus == Status.Ready)
+                {
+                    _serverStatus = Status.Busy;
+                    ListenToConnection(_clientQueue.Dequeue());
+                }
+
+            }
 
 			while (true)
 			{
@@ -184,7 +247,7 @@ namespace P2P_UAQ_Server.Core
         
 
 
-        public async void ListenToConnection()
+        public async void ListenToConnection(Connection connection)
         {
             
             Connection connection = _newConnection;
@@ -237,7 +300,22 @@ namespace P2P_UAQ_Server.Core
 
 
 
+        public void SendBroadcastClients(Status status, MessageType messageType)
+        {
+            Message message = new Message
+            {
+                Type = messageType,
+                Content = status,
+            };
 
+            string json = JsonConvert.SerializeObject(message);
+
+            foreach (var c in _clientQueue)
+            {
+                c.StreamWriter?.WriteLine(json);
+                c.StreamWriter?.Flush();
+            }
+        }
 
 
 

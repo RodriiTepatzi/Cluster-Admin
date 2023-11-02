@@ -9,7 +9,7 @@ namespace P2P_UAQ_Server.Models
     public class Message
     {
         public MessageType Type { get; set; }
-        public object? content { get; set; }
+        public object? Content { get; set; }
         public Connection? connection { get; set; }
     }
 }
