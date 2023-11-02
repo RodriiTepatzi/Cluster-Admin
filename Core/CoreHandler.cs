@@ -197,51 +197,6 @@ namespace P2P_UAQ_Server.Core
             AddWaitingServers();
             UpdateStatus(Status.Ready);
 
-
-            // IGNORE
-            var connectionOpen = true;
-
-            while (connectionOpen) 
-            {
-                try
-                {
-
-                    var dataReceived = await connection.StreamReader!.ReadLineAsync();
-                    var message = JsonConvert.DeserializeObject<Message>(dataReceived!);
-
-                    if (message!.Type == MessageType.UserDisconnected)
-                    {
-                       
-                    }
-                }
-                catch
-                {
-					// disconnected user
-					_connections.RemoveAll(c => c.Nickname == connection.Nickname && c.IpAddress == connection.IpAddress && c.Port == connection.Port);
-					HandlerOnMessageReceived($"Usuario desconectado. Actualizando a todos: {connection.Nickname} - {connection.IpAddress}:{connection.Port}. Notificando al cliente.");
-
-					foreach (Connection c in _connections)
-					{
-						try
-						{
-							var msgUserDisconnected = $"{connection.Nickname} se ha desconectado.";
-							var msgUserToBeSent = new Message { Type = MessageType.Message, Data = msgUserDisconnected };
-
-							c.StreamWriter!.WriteLine(JsonConvert.SerializeObject(msgUserToBeSent));
-							c.StreamWriter!.Flush();
-
-							SendDisconnectedUserToAll(c, connection);
-						}
-						catch
-						{
-						}
-					}
-
-					connectionOpen = false;
-				}
-            }
-            // IGNORE
-
         }
 
 
