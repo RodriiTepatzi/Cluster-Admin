@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net7.0-windows</TargetFramework>
+    <RootNamespace>P2P_UAQ_Server</RootNamespace>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="Views\DashboardView.xaml~RF4061b293.TMP" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FFmpeg.AutoGen" Version="6.0.0.2" />
+    <PackageReference Include="FFMpegCore" Version="5.1.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+</Project>
