@@ -181,14 +181,20 @@ namespace P2P_UAQ_Server.Core
 
                 var dataReceived = await connection.StreamReader!.ReadLineAsync();
                 var message = JsonConvert.DeserializeObject<Message>(dataReceived);
-
+                
                 byte[] video = message.Content as byte[];
 
                 File.WriteAllBytes(_inputPath, video);
 
                 CreateTempFolders();
 
+                GetVideoMeta(_inputPath);
+                GetVideoAudio(_inputPath, _audioPath, _videoAudioExtension);
+                GetVideoFrames(_inputPath, _framesPath);
 
+                SendImagesToServers(_framesPath);
+
+                CreateVideoWithFramesAndSound(_processedImgsPath, _audioPath, _outputPath, _videoFramerate, _videoExtension, _videoAudioExtension);
 
                 DeleteTempFolders();
                 DeleteVideos();
@@ -203,6 +209,14 @@ namespace P2P_UAQ_Server.Core
 
         // ******* MÉTODOS DE CLUSTER
 
+
+
+        public void ProcessVideoInCLuster() 
+        {
+            List<byte[]> images = GetImagesInFolder(_framesPath);
+
+
+        }
 
 
         public void SendStatusToClients(Status status)
@@ -220,6 +234,60 @@ namespace P2P_UAQ_Server.Core
                 c.StreamWriter?.WriteLine(json);
                 c.StreamWriter?.Flush();
             }
+        }
+
+
+
+        public void SendImagesToServers(string framesPath)
+        {
+            Message message = new Message 
+            { 
+                Type = MessageType.Data
+            };
+
+            List<byte[]> images = new List<byte[]>(GetImagesInFolder(framesPath));
+            int servers = _serversWorking.Count;
+
+            int limit = servers;
+            int numImages = images.Count;
+
+            if (numImages < servers)
+            {
+                limit = numImages;
+            }
+
+            int imagesPerServer = numImages / servers;
+            int remainingImages = numImages % servers;
+
+            for (int server = 0; server < limit; server++)
+            {
+                List<byte[]> imagesForServer = new List<byte[]>();
+
+                // asignamos las imagenes a los servers
+
+                for (int i = 0; i < imagesPerServer; i++)
+                {
+                    imagesForServer.Add(images[0]);
+                    images.RemoveAt(0);
+                }
+
+                // se reparten las imagenes sobrantes entre los primeros servers
+
+                if (remainingImages > 0)
+                {
+                    imagesForServer.Add(images[0]);
+                    images.RemoveAt(0);
+                    remainingImages--;
+                }
+
+                message.Content = imagesForServer;
+
+                var json = JsonConvert.SerializeObject(message);
+
+                _serversWorking[server].StreamWriter?.WriteLine(json);
+                _serversWorking[server].StreamWriter?.Flush();
+            }
+
         }
 
 
@@ -274,6 +342,7 @@ namespace P2P_UAQ_Server.Core
         public void DeleteVideos()
         {
             string[] videos = Directory.GetFiles(_outputPath);
+
             foreach (var v in videos)
             {
                 File.Delete(v);
@@ -339,7 +408,7 @@ namespace P2P_UAQ_Server.Core
 
 
 
-        public (double, string, string, string, string) GetVideoMeta(string inputPath)
+        public void GetVideoMeta(string inputPath)
         {
 
             IMediaAnalysis mediaInfo = FFProbe.Analyse(inputPath);
@@ -354,7 +423,12 @@ namespace P2P_UAQ_Server.Core
 
             Console.WriteLine("Metada extradida");
 
-            return (framerate, name, codec, videoExtension, audioExtension);
+            _videoFramerate = framerate;
+            _videoName = name;
+            _videoCodec = codec;
+            _videoExtension = videoExtension;
+            _videoAudioExtension = audioExtension;
+
         }
 
 
