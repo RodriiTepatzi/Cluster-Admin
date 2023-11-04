@@ -10,7 +10,7 @@ namespace P2P_UAQ_Server.Models
 {
     public class ProcessedData
     {
-		public int Part { get; set; }
+		public (int, int) Range { get; set; }
         public object? Content { get; set; }
 
     }

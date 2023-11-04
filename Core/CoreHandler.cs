@@ -27,6 +27,7 @@ namespace P2P_UAQ_Server.Core
 		private int _maxConnections;
 		private TcpListener? _server;
         private bool _isRunning = false;
+        private int _expectedImages;
 
         private List<Connection> _clientQueue = new List<Connection>();
         private List<Connection> _serversWaiting = new List<Connection>();
@@ -137,7 +138,8 @@ namespace P2P_UAQ_Server.Core
 
                         break;
 
-                    case (MessageType.Processor):
+                    case (MessageType.Processor): //TODO: Alertar a los servidores
+                        int
 
                         _serversWaiting.Add(message.connection);
 
@@ -170,7 +172,7 @@ namespace P2P_UAQ_Server.Core
 
             if (_clientQueue.Count > 0)
             {
-                // chose client to work with
+                // chose client to work with and dekete it from the list
                 
                 Connection connection = _clientQueue[0];
                 _clientQueue.Remove(connection);
@@ -193,8 +195,8 @@ namespace P2P_UAQ_Server.Core
                 GetVideoAudio(_inputPath, _audioPath, _videoAudioExtension);
                 GetVideoFrames(_inputPath, _framesPath);
 
-                int expected = SendImagesToServers(_framesPath);
-                WaitForProcessedImages(expected);
+                SendImagesToServers(_framesPath);
+                WaitForProcessedImages(_expectedImages);
 
                 CreateVideoWithFramesAndSound(_processedImgsPath, _audioPath, _outputPath, _videoFramerate, _videoExtension, _videoAudioExtension);
 
@@ -240,7 +242,7 @@ namespace P2P_UAQ_Server.Core
 
 
 
-        public int SendImagesToServers(string framesPath)
+        public void SendImagesToServers(string framesPath)
         {
             Message message = new Message 
             { 
@@ -252,6 +254,7 @@ namespace P2P_UAQ_Server.Core
 
             int limit = servers;
             int numImages = images.Count;
+            int range = 1; 
 
             if (numImages < servers)
             {
@@ -263,6 +266,8 @@ namespace P2P_UAQ_Server.Core
 
             for (int server = 0; server < limit; server++)
             {
+                int initialRange = range;
+
                 List<byte[]> imagesForServer = new List<byte[]>();
 
                 // asignamos las imagenes a los servers
@@ -271,6 +276,7 @@ namespace P2P_UAQ_Server.Core
                 {
                     imagesForServer.Add(images[0]);
                     images.RemoveAt(0);
+                    range++;
                 }
 
                 // se reparten las imagenes sobrantes entre los primeros servers
@@ -280,13 +286,15 @@ namespace P2P_UAQ_Server.Core
                     imagesForServer.Add(images[0]);
                     images.RemoveAt(0);
                     remainingImages--;
+                    range++;
                 }
+
+                int finalRange = range;
 
                 ProcessedData processedData = new ProcessedData
                 {
-                    Part = server + 1,
+                    Range = (initialRange, finalRange),
                     Content = imagesForServer,
-                    
                 };
 
                 message.Content = processedData;
@@ -297,7 +305,7 @@ namespace P2P_UAQ_Server.Core
                 _serversWorking[server].StreamWriter?.Flush();
             }
 
-            return limit; // returns the numbr of reponses expceted 
+            _expectedImages = limit; // sets the numbr of reponses expceted 
         }
 
 
@@ -326,14 +334,31 @@ namespace P2P_UAQ_Server.Core
             var message = JsonConvert.DeserializeObject<Message>(messageStream);
 
             if (message.Type == MessageType.ProcessedData)
-            { 
-                var images = message.Content as List<byte[]>;
+            {
+                var processedData = message.Content as ProcessedData;
+                var part = processedData.Range;
+                var images = processedData.Content as List<byte[]>;
 
-                for (int i = 1; i <= images.Count; i++)
-                { 
-                
+                for (int i = 0; i < images.Count ; i++)
+                {
+                    // for saving: path\frame%08d.bmp
+                    string frameName = $"frame{FrameName(part, i)}.bmp";
+                    File.WriteAllBytes( _processedImgsPath + FrameName, images[i]);
                 }
             }
+        }
+
+        public string FrameName((int, int) range, int index)
+        {
+            int num = range.Item1 + index;
+            string numString = num.ToString();
+
+            for (int i = 0; 0 < (8 - numString.Length) ; i++)
+            {
+                numString = "0" + numString;
+            }
+
+            return numString;
         }
 
 
