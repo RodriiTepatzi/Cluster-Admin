@@ -138,28 +138,28 @@ namespace P2P_UAQ_Server.Core
 
                         break;
 
-                    case (MessageType.Processor): //TODO: Alertar a los servidores
-                        int
+                    case (MessageType.Processor): 
 
                         _serversWaiting.Add(message.connection);
-
-                        if (_serverStatus == Status.Waiting)
-                        {
-                            AddWaitingServers();
-
-                            UpdateStatus(Status.Ready);
-                        }
 
                         break;
                 }
 
+                if (_serverStatus == Status.Waiting)
+                {
+                    AddWaitingServers();
+                    UpdateStatus(Status.Ready);
+                }
+
                 if (_serverStatus == Status.Ready)
                 {
-                    // we gonna work only on the first client in the queue, others wait
-
+                    // we gonna work only on the first client in the "queue" , others wait
+                    
+                    AddWaitingServers(); // add servers if they're waiting 
                     UpdateStatus(Status.Busy);
                     Thread thread = new Thread(WorkOnVideo);
                     thread.Start();
+
                 }
             }
 		}
@@ -234,6 +234,25 @@ namespace P2P_UAQ_Server.Core
             string json = JsonConvert.SerializeObject(message);
 
             foreach (var c in _clientQueue)
+            {
+                c.StreamWriter?.WriteLine(json);
+                c.StreamWriter?.Flush();
+            }
+        }
+
+
+
+        public void SendStatusToServers(Status status)
+        {
+            Message message = new Message
+            {
+                Type = MessageType.Status,
+                Content = status,
+            };
+
+            string json = JsonConvert.SerializeObject(message);
+
+            foreach (var c in _serversWorking)
             {
                 c.StreamWriter?.WriteLine(json);
                 c.StreamWriter?.Flush();
