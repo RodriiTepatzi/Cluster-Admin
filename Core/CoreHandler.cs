@@ -15,6 +15,7 @@ using System.Windows;
 using FFMpegCore;
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 
 namespace P2P_UAQ_Server.Core
 {
@@ -192,7 +193,8 @@ namespace P2P_UAQ_Server.Core
                 GetVideoAudio(_inputPath, _audioPath, _videoAudioExtension);
                 GetVideoFrames(_inputPath, _framesPath);
 
-                SendImagesToServers(_framesPath);
+                int expected = SendImagesToServers(_framesPath);
+                WaitForProcessedImages(expected);
 
                 CreateVideoWithFramesAndSound(_processedImgsPath, _audioPath, _outputPath, _videoFramerate, _videoExtension, _videoAudioExtension);
 
@@ -238,7 +240,7 @@ namespace P2P_UAQ_Server.Core
 
 
 
-        public void SendImagesToServers(string framesPath)
+        public int SendImagesToServers(string framesPath)
         {
             Message message = new Message 
             { 
@@ -280,7 +282,14 @@ namespace P2P_UAQ_Server.Core
                     remainingImages--;
                 }
 
-                message.Content = imagesForServer;
+                ProcessedData processedData = new ProcessedData
+                {
+                    Part = server + 1,
+                    Content = imagesForServer,
+                    
+                };
+
+                message.Content = processedData;
 
                 var json = JsonConvert.SerializeObject(message);
 
@@ -288,8 +297,44 @@ namespace P2P_UAQ_Server.Core
                 _serversWorking[server].StreamWriter?.Flush();
             }
 
+            return limit; // returns the numbr of reponses expceted 
         }
 
+
+
+        public void WaitForProcessedImages(int expected)
+        {
+            int expectedAnswers = expected;
+
+            Thread[] serverThreads = new Thread[expectedAnswers];
+
+            for (int i = 0; i < expectedAnswers; i++)
+            {
+                serverThreads[i] = new Thread(() => ListenToServers(_serversWorking[i]));
+                serverThreads[i].Start();
+            }
+
+            foreach (Thread t in serverThreads)
+            {
+                t.Join();
+            }
+        }
+        
+        public async void ListenToServers(Connection c)
+        {
+            var messageStream = c.StreamReader?.ReadLine();
+            var message = JsonConvert.DeserializeObject<Message>(messageStream);
+
+            if (message.Type == MessageType.ProcessedData)
+            { 
+                var images = message.Content as List<byte[]>;
+
+                for (int i = 1; i <= images.Count; i++)
+                { 
+                
+                }
+            }
+        }
 
 
         public void AddWaitingServers()
