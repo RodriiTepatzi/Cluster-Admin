@@ -339,19 +339,18 @@ namespace P2P_UAQ_Server.Core
                 var part = processedData.Range;
                 var images = processedData.Content as List<byte[]>;
 
-                for (int i = 0; i < images.Count ; i++)
+                for (int i = part.Item1; i <= part.Item2 ; i++)
                 {
                     // for saving: path\frame%08d.bmp
-                    string frameName = $"frame{FrameName(part, i)}.bmp";
+                    string frameName = $"frame{FrameName(i)}.bmp";
                     File.WriteAllBytes( _processedImgsPath + FrameName, images[i]);
                 }
             }
         }
 
-        public string FrameName((int, int) range, int index)
-        {
-            int num = range.Item1 + index;
-            string numString = num.ToString();
+        public string FrameName(int index)
+        { 
+            string numString = index.ToString();
 
             for (int i = 0; 0 < (8 - numString.Length) ; i++)
             {
