@@ -17,15 +17,17 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
 
+
+
 namespace P2P_UAQ_Server.Core
 {
     public class CoreHandler
     {
         private readonly static CoreHandler _instance = new CoreHandler();
-		private string? _serverIP;
-		private int _serverPort;
-		private int _maxConnections;
-		private TcpListener? _server;
+        private string? _serverIP;
+        private int _serverPort;
+        private int _maxConnections;
+        private TcpListener? _server;
         private bool _isRunning = false;
         private int _expectedImages;
 
@@ -58,20 +60,22 @@ namespace P2P_UAQ_Server.Core
 
         // datos conexiones 
         private TcpClient? _client;
-		private Connection _newConnection = new Connection(); // Variable reutilizable para los usuarios conectados
+        private Connection _newConnection = new Connection(); // Variable reutilizable para los usuarios conectados
 
 
-		public event EventHandler<PrivateMessageReceivedEventArgs>? PrivateMessageReceived;
-		public event EventHandler<MessageReceivedEventArgs>? PublicMessageReceived;
+        public event EventHandler<PrivateMessageReceivedEventArgs>? PrivateMessageReceived;
+        public event EventHandler<MessageReceivedEventArgs>? PublicMessageReceived;
 
 
-		private CoreHandler() {
-			_serverIP = "";
-			_serverPort = 0;
+        private CoreHandler()
+        {
+            _serverIP = "";
+            _serverPort = 0;
         }
 
-        public static CoreHandler Instance { 
-            get { return _instance; } 
+        public static CoreHandler Instance
+        {
+            get { return _instance; }
         }
 
         public event Action<string>? ServerStatusUpdated;
@@ -86,25 +90,26 @@ namespace P2P_UAQ_Server.Core
 
 
         // PARA INICIAR SERVIDOR
-        public async void InitializeLocalServer(string ip, int port, string maxConnections) 
-		{
+        public async void InitializeLocalServer(string ip, int port, string maxConnections)
+        {
             // check if folder for IO video exists
 
             if (!Directory.Exists(_outputPath)) Directory.CreateDirectory(_outputPath);
-            
+
             // create server
 
             _serverIP = ip;
-			_serverPort = port;
-			_maxConnections = int.Parse(maxConnections);
+            _serverPort = port;
+            _maxConnections = int.Parse(maxConnections);
 
 
-			_server = new TcpListener(IPAddress.Parse(_serverIP), _serverPort);
-			_server.Start(_maxConnections);
+            _server = new TcpListener(IPAddress.Parse(_serverIP), _serverPort);
+            _server.Start(_maxConnections);
 
-			HandlerOnMessageReceived($"Server listo y esperando en: {_serverIP}:{_serverPort}");
+            HandlerOnMessageReceived($"Server listo y esperando en: {_serverIP}:{_serverPort}");
+            HandlerOnMessageReceived($"Status: Waiting");
 
-            while (true) 
+            while (true)
             {
                 _client = await _server.AcceptTcpClientAsync();
 
@@ -117,17 +122,14 @@ namespace P2P_UAQ_Server.Core
 
 
                 var dataReceived = _newConnection.StreamReader!.ReadLine();
-                var message = JsonConvert.DeserializeObject<Message>(dataReceived!);
+                Message message = JsonConvert.DeserializeObject<Message>(dataReceived!);
+                Connection connection = JsonConvert.DeserializeObject<Connection>((string)message.Content);
 
-                // ? Esto eran para el servidor del cliente en el p2p aquí no esnecesario, no?
-                //string? json = message!.Content as string;
-                //var convertedData = JsonConvert.DeserializeObject<Connection>(json!);
+                _newConnection.IpAddress = connection.IpAddress; // ip
 
-                //_newConnection.IpAddress = convertedData.IpAddress; // ip
+                if (object.Equals(connection.IpAddress, "0.0.0.0")) _newConnection.IpAddress = "127.0.0.1";
 
-                //if (object.Equals(convertedData.IpAddress, "0.0.0.0")) _newConnection.IpAddress = "127.0.0.1";
-
-                //_newConnection.Port = convertedData.Port; // puerto
+                _newConnection.Port = connection.Port; // puerto
 
 
                 switch (message.Type)
@@ -135,14 +137,17 @@ namespace P2P_UAQ_Server.Core
 
                     case (MessageType.User):
 
-                        _clientQueue.Add(message.connection); // they gonna wait their turn
-                        SendTurnToClients(_clientQueue); // sends an int 
+                        _clientQueue.Add(_newConnection); // they gonna wait their turn
+                        HandlerOnMessageReceived($"Nuevo cliente en espera {_newConnection.IpAddress}:{_newConnection.Port}");
+
+                        SendTurnToClients(_clientQueue); // sends an int
 
                         break;
 
-                    case (MessageType.Processor): 
+                    case (MessageType.Processor):
 
-                        _serversWaiting.Add(message.connection);
+                        _serversWaiting.Add(_newConnection);
+                        HandlerOnMessageReceived($"Nuevo server en espera {_newConnection.IpAddress}:{_newConnection.Port}");
 
                         break;
                 }
@@ -150,13 +155,12 @@ namespace P2P_UAQ_Server.Core
                 if (_serverStatus == Status.Waiting)
                 {
                     AddWaitingServers(); // adds and alerts the servers
-                    UpdateStatus(Status.Ready);
                 }
 
                 if (_serverStatus == Status.Ready)
                 {
                     // we gonna work only on the first client in the "queue" , others wait
-                    
+
                     AddWaitingServers(); // add servers if they're waiting 
                     UpdateStatus(Status.Busy);
                     Thread thread = new Thread(WorkOnVideo);
@@ -164,8 +168,8 @@ namespace P2P_UAQ_Server.Core
 
                 }
             }
-		}
-        
+        }
+
 
 
         public async void WorkOnVideo()
@@ -175,8 +179,8 @@ namespace P2P_UAQ_Server.Core
             if (_clientQueue.Count > 0)
             {
                 // chose client to work with and dekete it from the list
-                
-                Connection connection = _clientQueue[0];
+
+                Connection connection = _clientQueue.ElementAt(0);
                 _clientQueue.Remove(connection);
 
                 SendStatusToClients(Status.Busy); // to all but not the chosen one
@@ -184,9 +188,9 @@ namespace P2P_UAQ_Server.Core
 
                 // waiting for the video
 
-                var dataReceived = await connection.StreamReader!.ReadLineAsync();
+                var dataReceived = connection.StreamReader!.ReadLine();
                 var message = JsonConvert.DeserializeObject<Message>(dataReceived);
-                
+
                 byte[] video = message.Content as byte[];
 
                 File.WriteAllBytes(_inputPath, video);
@@ -232,6 +236,7 @@ namespace P2P_UAQ_Server.Core
                 c.StreamWriter?.WriteLine(json);
                 c.StreamWriter?.Flush();
             }
+
         }
 
 
@@ -257,8 +262,8 @@ namespace P2P_UAQ_Server.Core
 
         public void SendImagesToServers(string framesPath)
         {
-            Message message = new Message 
-            { 
+            Message message = new Message
+            {
                 Type = MessageType.Data
             };
 
@@ -267,7 +272,7 @@ namespace P2P_UAQ_Server.Core
 
             int limit = servers;
             int numImages = images.Count;
-            int range = 0; 
+            int range = 0;
 
             if (numImages < servers)
             {
@@ -340,7 +345,7 @@ namespace P2P_UAQ_Server.Core
                 t.Join();
             }
         }
-        
+
         public async void ListenToServers(Connection c)
         {
             var messageStream = c.StreamReader?.ReadLine();
@@ -352,20 +357,20 @@ namespace P2P_UAQ_Server.Core
                 var part = processedData.Range;
                 var images = processedData.Content as List<byte[]>;
 
-                for (int i = part.Item1; i <= part.Item2 ; i++)
+                for (int i = part.Item1; i <= part.Item2; i++)
                 {
                     // for saving: path\frame%08d.bmp
                     string frameName = $"frame{FrameName(i)}.bmp";
-                    File.WriteAllBytes( _processedImgsPath + FrameName, images[i]);
+                    File.WriteAllBytes(_processedImgsPath + FrameName, images[i]);
                 }
             }
         }
 
         public string FrameName(int index)
-        { 
+        {
             string numString = index.ToString();
 
-            for (int i = 0; 0 < (8 - numString.Length) ; i++)
+            for (int i = 0; 0 < (8 - numString.Length); i++)
             {
                 numString = "0" + numString;
             }
@@ -376,30 +381,41 @@ namespace P2P_UAQ_Server.Core
 
         public void AddWaitingServers()
         {
-            Message message = new Message 
-            { 
-                Type = MessageType.Status,
-                Content = Status.Ready,
-            };
+            int serversWaiting = _serversWaiting.Count;
 
-            var json = JsonConvert.SerializeObject(message);
-
-            foreach (var s in _serversWaiting)
+            if (serversWaiting > 0)
             {
-                s.StreamWriter?.WriteLine(json);
-                s.StreamWriter?.Flush();
+                Message message = new Message
+                {
+                    Type = MessageType.Status,
+                    Content = Status.Ready,
+                };
 
-                _serversWorking.Add(s);
+                var json = JsonConvert.SerializeObject(message);
+
+                foreach (var s in _serversWaiting)
+                {
+                    s.StreamWriter?.WriteLine(json);
+                    s.StreamWriter?.Flush();
+
+                    _serversWorking.Add(s);
+                }
+
+                HandlerOnMessageReceived($"Nuevos serves agregados {_serversWaiting.Count}");
+                UpdateStatus(Status.Ready);
+                _serversWaiting.Clear();
+
+                return;
             }
 
-            _serversWaiting.Clear();
+            HandlerOnMessageReceived($"Ningún server agregado");
         }
 
 
         public void SendStatusToChosenClient(Status status, Connection connection)
         {
-            Message message = new Message 
-            { 
+            Message message = new Message
+            {
                 Type = MessageType.Status,
                 Content = status,
             };
@@ -418,7 +434,7 @@ namespace P2P_UAQ_Server.Core
             Message message = new Message
             {
                 Type = MessageType.Turn,
-            }; 
+            };
 
             foreach (var c in connections)
             {
@@ -496,7 +512,7 @@ namespace P2P_UAQ_Server.Core
                 .OutputToFile($"{framesPath}\\frame%08d.bmp") // indicates the nomeclature i.e. 15th frame = frame00000015.bmp
                 .ProcessSynchronously();
 
-            Console.WriteLine("Imágenes extraídas con éxito.");
+            HandlerOnMessageReceived($"Imágenes extraídas con éxito.");
         }
 
 
@@ -514,7 +530,7 @@ namespace P2P_UAQ_Server.Core
             string videoExtension = Path.GetExtension(inputPath).TrimStart('.') ?? "mp4";
             string audioExtension = mediaInfo.PrimaryAudioStream?.CodecName ?? "mp3";
 
-            Console.WriteLine("Metada extradida");
+            HandlerOnMessageReceived($"Metada extradida");
 
             _videoFramerate = framerate;
             _videoName = name;
@@ -546,6 +562,8 @@ namespace P2P_UAQ_Server.Core
 
             ffmpegProcess.Start();
             ffmpegProcess.WaitForExit();
+
+            HandlerOnMessageReceived($"Audios extraido con éxito");
         }
 
 
@@ -666,6 +684,7 @@ namespace P2P_UAQ_Server.Core
         public void UpdateStatus(Status newStatus)
         {
             _serverStatus = newStatus;
+            HandlerOnMessageReceived($"Nuevo Status: {newStatus}");
         }
 
         // ******* MÉTODOS DE CLUSTER
@@ -677,20 +696,20 @@ namespace P2P_UAQ_Server.Core
                 _server!.Stop();
                 _isRunning = false;
             }
-			HandlerOnMessageReceived("Servidor cerrado.");
+            HandlerOnMessageReceived("Servidor cerrado.");
         }
 
 
-		// Eventos de interfaz
-		
-		// Invokers
+        // Eventos de interfaz
 
-		private void OnMessageReceived(MessageReceivedEventArgs e) => PublicMessageReceived?.Invoke(this, e);
-		
+        // Invokers
 
-		// Handlers
+        private void OnMessageReceived(MessageReceivedEventArgs e) => PublicMessageReceived?.Invoke(this, e);
 
-		private void HandlerOnMessageReceived(string value) => OnMessageReceived(new MessageReceivedEventArgs(value));
-		
-	}
+
+        // Handlers
+
+        private void HandlerOnMessageReceived(string value) => OnMessageReceived(new MessageReceivedEventArgs(value));
+
+    }
 }
