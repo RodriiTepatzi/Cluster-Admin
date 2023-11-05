@@ -118,6 +118,8 @@ namespace P2P_UAQ_Server.Core
 
                 var dataReceived = _newConnection.StreamReader!.ReadLine();
                 var message = JsonConvert.DeserializeObject<Message>(dataReceived!);
+
+                // ? Esto eran para el servidor del cliente en el p2p aquí no esnecesario, no?
                 //string? json = message!.Content as string;
                 //var convertedData = JsonConvert.DeserializeObject<Connection>(json!);
 
@@ -215,14 +217,6 @@ namespace P2P_UAQ_Server.Core
 
 
 
-        public void ProcessVideoInCLuster() 
-        {
-            List<byte[]> images = GetImagesInFolder(_framesPath);
-
-
-        }
-
-
         public void SendStatusToClients(Status status)
         {
             Message message = new Message
@@ -273,7 +267,7 @@ namespace P2P_UAQ_Server.Core
 
             int limit = servers;
             int numImages = images.Count;
-            int range = 1; 
+            int range = 0; 
 
             if (numImages < servers)
             {
@@ -285,7 +279,7 @@ namespace P2P_UAQ_Server.Core
 
             for (int server = 0; server < limit; server++)
             {
-                int initialRange = range;
+                int initialRange = range + 1;
 
                 List<byte[]> imagesForServer = new List<byte[]>();
 
