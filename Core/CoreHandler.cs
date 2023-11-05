@@ -15,6 +15,7 @@ using System.Windows;
 using FFMpegCore;
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 
 namespace P2P_UAQ_Server.Core
 {
@@ -26,6 +27,7 @@ namespace P2P_UAQ_Server.Core
 		private int _maxConnections;
 		private TcpListener? _server;
         private bool _isRunning = false;
+        private int _expectedImages;
 
         private List<Connection> _clientQueue = new List<Connection>();
         private List<Connection> _serversWaiting = new List<Connection>();
@@ -116,14 +118,16 @@ namespace P2P_UAQ_Server.Core
 
                 var dataReceived = _newConnection.StreamReader!.ReadLine();
                 var message = JsonConvert.DeserializeObject<Message>(dataReceived!);
-                string? json = message!.Content as string;
-                var convertedData = JsonConvert.DeserializeObject<Connection>(json!);
 
-                _newConnection.IpAddress = convertedData.IpAddress; // ip
+                // ? Esto eran para el servidor del cliente en el p2p aquí no esnecesario, no?
+                //string? json = message!.Content as string;
+                //var convertedData = JsonConvert.DeserializeObject<Connection>(json!);
 
-                if (object.Equals(convertedData.IpAddress, "0.0.0.0")) _newConnection.IpAddress = "127.0.0.1";
+                //_newConnection.IpAddress = convertedData.IpAddress; // ip
 
-                _newConnection.Port = convertedData.Port; // puerto
+                //if (object.Equals(convertedData.IpAddress, "0.0.0.0")) _newConnection.IpAddress = "127.0.0.1";
+
+                //_newConnection.Port = convertedData.Port; // puerto
 
 
                 switch (message.Type)
@@ -136,27 +140,28 @@ namespace P2P_UAQ_Server.Core
 
                         break;
 
-                    case (MessageType.Processor):
+                    case (MessageType.Processor): 
 
                         _serversWaiting.Add(message.connection);
-
-                        if (_serverStatus == Status.Waiting)
-                        {
-                            AddWaitingServers();
-
-                            UpdateStatus(Status.Ready);
-                        }
 
                         break;
                 }
 
+                if (_serverStatus == Status.Waiting)
+                {
+                    AddWaitingServers(); // adds and alerts the servers
+                    UpdateStatus(Status.Ready);
+                }
+
                 if (_serverStatus == Status.Ready)
                 {
-                    // we gonna work only on the first client in the queue, others wait
-
+                    // we gonna work only on the first client in the "queue" , others wait
+                    
+                    AddWaitingServers(); // add servers if they're waiting 
                     UpdateStatus(Status.Busy);
                     Thread thread = new Thread(WorkOnVideo);
                     thread.Start();
+
                 }
             }
 		}
@@ -169,7 +174,7 @@ namespace P2P_UAQ_Server.Core
 
             if (_clientQueue.Count > 0)
             {
-                // chose client to work with
+                // chose client to work with and dekete it from the list
                 
                 Connection connection = _clientQueue[0];
                 _clientQueue.Remove(connection);
@@ -181,14 +186,21 @@ namespace P2P_UAQ_Server.Core
 
                 var dataReceived = await connection.StreamReader!.ReadLineAsync();
                 var message = JsonConvert.DeserializeObject<Message>(dataReceived);
-
+                
                 byte[] video = message.Content as byte[];
 
                 File.WriteAllBytes(_inputPath, video);
 
                 CreateTempFolders();
 
+                GetVideoMeta(_inputPath);
+                GetVideoAudio(_inputPath, _audioPath, _videoAudioExtension);
+                GetVideoFrames(_inputPath, _framesPath);
 
+                SendImagesToServers(_framesPath);
+                WaitForProcessedImages(_expectedImages);
+
+                CreateVideoWithFramesAndSound(_processedImgsPath, _audioPath, _outputPath, _videoFramerate, _videoExtension, _videoAudioExtension);
 
                 DeleteTempFolders();
                 DeleteVideos();
@@ -224,10 +236,159 @@ namespace P2P_UAQ_Server.Core
 
 
 
+        public void SendStatusToServers(Status status)
+        {
+            Message message = new Message
+            {
+                Type = MessageType.Status,
+                Content = status,
+            };
+
+            string json = JsonConvert.SerializeObject(message);
+
+            foreach (var c in _serversWorking)
+            {
+                c.StreamWriter?.WriteLine(json);
+                c.StreamWriter?.Flush();
+            }
+        }
+
+
+
+        public void SendImagesToServers(string framesPath)
+        {
+            Message message = new Message 
+            { 
+                Type = MessageType.Data
+            };
+
+            List<byte[]> images = new List<byte[]>(GetImagesInFolder(framesPath));
+            int servers = _serversWorking.Count;
+
+            int limit = servers;
+            int numImages = images.Count;
+            int range = 0; 
+
+            if (numImages < servers)
+            {
+                limit = numImages;
+            }
+
+            int imagesPerServer = numImages / servers;
+            int remainingImages = numImages % servers;
+
+            for (int server = 0; server < limit; server++)
+            {
+                int initialRange = range + 1;
+
+                List<byte[]> imagesForServer = new List<byte[]>();
+
+                // asignamos las imagenes a los servers
+
+                for (int i = 0; i < imagesPerServer; i++)
+                {
+                    imagesForServer.Add(images[0]);
+                    images.RemoveAt(0);
+                    range++;
+                }
+
+                // se reparten las imagenes sobrantes entre los primeros servers
+
+                if (remainingImages > 0)
+                {
+                    imagesForServer.Add(images[0]);
+                    images.RemoveAt(0);
+                    remainingImages--;
+                    range++;
+                }
+
+                int finalRange = range;
+
+                FramesData processedData = new FramesData
+                {
+                    Range = (initialRange, finalRange),
+                    Content = imagesForServer,
+                };
+
+                message.Content = processedData;
+
+                var json = JsonConvert.SerializeObject(message);
+
+                _serversWorking[server].StreamWriter?.WriteLine(json);
+                _serversWorking[server].StreamWriter?.Flush();
+            }
+
+            _expectedImages = limit; // sets the numbr of reponses expceted 
+        }
+
+
+
+        public void WaitForProcessedImages(int expected)
+        {
+            int expectedAnswers = expected;
+
+            Thread[] serverThreads = new Thread[expectedAnswers];
+
+            for (int i = 0; i < expectedAnswers; i++)
+            {
+                serverThreads[i] = new Thread(() => ListenToServers(_serversWorking[i]));
+                serverThreads[i].Start();
+            }
+
+            foreach (Thread t in serverThreads)
+            {
+                t.Join();
+            }
+        }
+        
+        public async void ListenToServers(Connection c)
+        {
+            var messageStream = c.StreamReader?.ReadLine();
+            var message = JsonConvert.DeserializeObject<Message>(messageStream);
+
+            if (message.Type == MessageType.ProcessedData)
+            {
+                var processedData = message.Content as FramesData;
+                var part = processedData.Range;
+                var images = processedData.Content as List<byte[]>;
+
+                for (int i = part.Item1; i <= part.Item2 ; i++)
+                {
+                    // for saving: path\frame%08d.bmp
+                    string frameName = $"frame{FrameName(i)}.bmp";
+                    File.WriteAllBytes( _processedImgsPath + FrameName, images[i]);
+                }
+            }
+        }
+
+        public string FrameName(int index)
+        { 
+            string numString = index.ToString();
+
+            for (int i = 0; 0 < (8 - numString.Length) ; i++)
+            {
+                numString = "0" + numString;
+            }
+
+            return numString;
+        }
+
+
         public void AddWaitingServers()
         {
+            Message message = new Message 
+            { 
+                Type = MessageType.Status,
+                Content = Status.Ready,
+            };
+
+            var json = JsonConvert.SerializeObject(message);
+
             foreach (var s in _serversWaiting)
             {
+                s.StreamWriter?.WriteLine(json);
+                s.StreamWriter?.Flush();
+
                 _serversWorking.Add(s);
             }
 
@@ -274,6 +435,7 @@ namespace P2P_UAQ_Server.Core
         public void DeleteVideos()
         {
             string[] videos = Directory.GetFiles(_outputPath);
+
             foreach (var v in videos)
             {
                 File.Delete(v);
@@ -339,7 +501,7 @@ namespace P2P_UAQ_Server.Core
 
 
 
-        public (double, string, string, string, string) GetVideoMeta(string inputPath)
+        public void GetVideoMeta(string inputPath)
         {
 
             IMediaAnalysis mediaInfo = FFProbe.Analyse(inputPath);
@@ -354,7 +516,12 @@ namespace P2P_UAQ_Server.Core
 
             Console.WriteLine("Metada extradida");
 
-            return (framerate, name, codec, videoExtension, audioExtension);
+            _videoFramerate = framerate;
+            _videoName = name;
+            _videoCodec = codec;
+            _videoExtension = videoExtension;
+            _videoAudioExtension = audioExtension;
+
         }
 
 
