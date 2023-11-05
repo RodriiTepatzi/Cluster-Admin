@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace P2P_UAQ_Server.Models
 {
-    public class ProcessedData
+    public class FramesData
     {
 		public (int, int) Range { get; set; }
         public object? Content { get; set; }

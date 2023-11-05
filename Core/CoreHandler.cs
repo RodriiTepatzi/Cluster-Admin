@@ -310,7 +310,7 @@ namespace P2P_UAQ_Server.Core
 
                 int finalRange = range;
 
-                ProcessedData processedData = new ProcessedData
+                FramesData processedData = new FramesData
                 {
                     Range = (initialRange, finalRange),
                     Content = imagesForServer,
@@ -354,7 +354,7 @@ namespace P2P_UAQ_Server.Core
 
             if (message.Type == MessageType.ProcessedData)
             {
-                var processedData = message.Content as ProcessedData;
+                var processedData = message.Content as FramesData;
                 var part = processedData.Range;
                 var images = processedData.Content as List<byte[]>;
 
