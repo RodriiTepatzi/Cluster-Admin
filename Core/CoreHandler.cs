@@ -118,14 +118,14 @@ namespace P2P_UAQ_Server.Core
 
                 var dataReceived = _newConnection.StreamReader!.ReadLine();
                 var message = JsonConvert.DeserializeObject<Message>(dataReceived!);
-                string? json = message!.Content as string;
-                var convertedData = JsonConvert.DeserializeObject<Connection>(json!);
+                //string? json = message!.Content as string;
+                //var convertedData = JsonConvert.DeserializeObject<Connection>(json!);
 
-                _newConnection.IpAddress = convertedData.IpAddress; // ip
+                //_newConnection.IpAddress = convertedData.IpAddress; // ip
 
-                if (object.Equals(convertedData.IpAddress, "0.0.0.0")) _newConnection.IpAddress = "127.0.0.1";
+                //if (object.Equals(convertedData.IpAddress, "0.0.0.0")) _newConnection.IpAddress = "127.0.0.1";
 
-                _newConnection.Port = convertedData.Port; // puerto
+                //_newConnection.Port = convertedData.Port; // puerto
 
 
                 switch (message.Type)
@@ -147,7 +147,7 @@ namespace P2P_UAQ_Server.Core
 
                 if (_serverStatus == Status.Waiting)
                 {
-                    AddWaitingServers();
+                    AddWaitingServers(); // adds and alerts the servers
                     UpdateStatus(Status.Ready);
                 }
 
@@ -382,8 +382,19 @@ namespace P2P_UAQ_Server.Core
 
         public void AddWaitingServers()
         {
+            Message message = new Message 
+            { 
+                Type = MessageType.Status,
+                Content = Status.Ready,
+            };
+
+            var json = JsonConvert.SerializeObject(message);
+
             foreach (var s in _serversWaiting)
             {
+                s.StreamWriter?.WriteLine(json);
+                s.StreamWriter?.Flush();
+
                 _serversWorking.Add(s);
             }
 
