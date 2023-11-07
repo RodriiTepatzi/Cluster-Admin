@@ -41,7 +41,7 @@ namespace P2P_UAQ_Server.Core
 
         private string _ffmpegPathString = "ffmpeg.exe"; // as os system variable
 
-        private string _inputPath = "C:\\CLUSTER_FOLDER\\video.mp4"; // for received video
+        private string _inputPath = "C:\\CLUSTER_FOLDER\\video."; // for received video
         private string _outputPath = "C:\\CLUSTER_FOLDER";
 
         private string? _mainPath; // temporal main folder 
@@ -142,6 +142,9 @@ namespace P2P_UAQ_Server.Core
 
                         SendTurnToClients(_clientQueue); // sends an int
 
+                        if (_serverStatus == Status.Busy) { SendStatusToChosenClient(Status.Busy, _newConnection); }
+                        else if (_serverStatus == Status.Waiting) { SendStatusToChosenClient(Status.Waiting, _newConnection); }
+
                         break;
 
                     case (MessageType.Processor):
@@ -183,6 +186,8 @@ namespace P2P_UAQ_Server.Core
                 Connection connection = _clientQueue.ElementAt(0);
                 _clientQueue.Remove(connection);
 
+                // always send turn and status in that order
+                SendTurnToClients(_clientQueue);
                 SendStatusToClients(Status.Busy); // to all but not the chosen one
                 SendStatusToChosenClient(Status.Ready, connection);
 
@@ -190,10 +195,11 @@ namespace P2P_UAQ_Server.Core
 
                 var dataReceived = connection.StreamReader!.ReadLine();
                 var message = JsonConvert.DeserializeObject<Message>(dataReceived);
+                var video = message.Content as Video;
 
-                byte[] video = message.Content as byte[];
-
-                File.WriteAllBytes(_inputPath, video);
+                // save video 
+                _inputPath += video.Format;
+                File.WriteAllBytes(_inputPath, video.Data);
 
                 CreateTempFolders();
 
@@ -205,6 +211,17 @@ namespace P2P_UAQ_Server.Core
                 WaitForProcessedImages(_expectedImages);
 
                 CreateVideoWithFramesAndSound(_processedImgsPath, _audioPath, _outputPath, _videoFramerate, _videoExtension, _videoAudioExtension);
+
+                // send the processed video
+
+                Video processedVideo = new Video {
+                    Format = _videoAudioExtension,
+                    Data = File.ReadAllBytes(_outputPath),
+                };
+
+                string json = JsonConvert.SerializeObject(processedVideo);
+                connection.StreamWriter?.WriteLine(json);
+                connection.StreamWriter?.Flush();
 
                 DeleteTempFolders();
                 DeleteVideos();
