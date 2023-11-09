@@ -100,13 +100,20 @@ namespace P2P_UAQ_Server.Core
 
             _serverIP = ip;
             _serverPort = port;
-            _maxConnections = int.Parse(maxConnections);
-
-
             _server = new TcpListener(IPAddress.Parse(_serverIP), _serverPort);
-            _server.Start(_maxConnections);
 
-            HandlerOnMessageReceived($"Server listo y esperando en: {_serverIP}:{_serverPort}");
+            if (int.TryParse(maxConnections, out _maxConnections))
+            {
+                _server.Start(_maxConnections);
+                HandlerOnMessageReceived($"Server listo y esperando en: {_serverIP}:{_serverPort} (Max.Usuarios: {_maxConnections})");
+            }
+            else
+            {
+                _server.Start();
+                HandlerOnMessageReceived($"Server listo y esperando en: {_serverIP}:{_serverPort} (Max.Usuarios: Sin Límite)");
+            }
+
+
             HandlerOnMessageReceived($"Status: Waiting");
 
             while (true)
