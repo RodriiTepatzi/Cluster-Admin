@@ -12,6 +12,7 @@ using P2P_UAQ_Server.Models;
 using P2P_UAQ_Server.Views;
 using P2P_UAQ_Server.ViewModels;
 using P2P_UAQ_Server.Core;
+using System.Text.RegularExpressions;
 
 namespace P2P_UAQ_Server.ViewModels
 {
@@ -120,7 +121,7 @@ namespace P2P_UAQ_Server.ViewModels
         private bool CanExecuteStartServerCommand(object obj)
         {
             bool validData;
-            if (string.IsNullOrWhiteSpace(DirIP) || string.IsNullOrWhiteSpace(Port) || string.IsNullOrWhiteSpace(Users))  
+            if (string.IsNullOrWhiteSpace(DirIP) || string.IsNullOrWhiteSpace(Port) || Port == "Puerto" || DirIP == "Dirección IPv4" || !IsValidIPv4(DirIP) || !IsNumberOrEmpty(Users) || !IsNumber(Port))//|| string.IsNullOrWhiteSpace(Users))  
             { 
                 validData = false;
             }
@@ -150,6 +151,38 @@ namespace P2P_UAQ_Server.ViewModels
             var dashViewModel = new DashboardViewModel();
             var dashView = new DashboardView(dashViewModel);
             dashView.Show();
+        }
+
+        private bool IsValidIPv4(string ipAddress)
+        {
+            string ipv4Pattern = @"^(25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)\." +
+                                 @"(25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)\." +
+                                 @"(25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)\." +
+                                 @"(25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)$";
+
+            Regex regex = new Regex(ipv4Pattern);
+
+            return regex.IsMatch(ipAddress);
+        }
+
+        private bool IsNumberOrEmpty(string maxConnections)
+        {
+            int tempInt;
+            if (maxConnections == null || maxConnections == "" || int.TryParse(maxConnections, out tempInt) || maxConnections == "Número máximo de usuarios")
+            {
+                return true;
+            }
+            return false;
+        }
+
+        private bool IsNumber(string port)
+        {
+            int tempInt;
+            if (int.TryParse(port, out tempInt))
+            {
+                return true;
+            }
+            return false;
         }
     }
 }
