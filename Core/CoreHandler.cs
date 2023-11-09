@@ -243,7 +243,7 @@ namespace P2P_UAQ_Server.Core
             Message message = new Message
             {
                 Type = MessageType.Status,
-                Content = status,
+                Content = JsonConvert.SerializeObject(status),
             };
 
             string json = JsonConvert.SerializeObject(message);
@@ -263,7 +263,7 @@ namespace P2P_UAQ_Server.Core
             Message message = new Message
             {
                 Type = MessageType.Status,
-                Content = status,
+                Content = JsonConvert.SerializeObject(status),
             };
 
             string json = JsonConvert.SerializeObject(message);
@@ -434,7 +434,7 @@ namespace P2P_UAQ_Server.Core
             Message message = new Message
             {
                 Type = MessageType.Status,
-                Content = status,
+                Content = JsonConvert.SerializeObject(status),
             };
 
             string json = JsonConvert.SerializeObject(message);
