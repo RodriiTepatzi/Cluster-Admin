@@ -210,14 +210,14 @@ namespace P2P_UAQ_Server.Core
 
                 CreateTempFolders();
 
-                GetVideoMeta(_inputPath);
-                GetVideoAudio(_inputPath, _audioPath, _videoAudioExtension);
-                GetVideoFrames(_inputPath, _framesPath);
+                //GetVideoMeta(_inputPath);
+                //GetVideoAudio(_inputPath, _audioPath, _videoAudioExtension);
+                //GetVideoFrames(_inputPath, _framesPath);
 
                 SendImagesToServers(_framesPath);
                 WaitForProcessedImages(_expectedImages);
 
-                CreateVideoWithFramesAndSound(_processedImgsPath, _audioPath, _outputPath, _videoFramerate, _videoExtension, _videoAudioExtension);
+                //CreateVideoWithFramesAndSound(_processedImgsPath, _audioPath, _outputPath, _videoFramerate, _videoExtension, _videoAudioExtension);
 
                 // send the processed video
 
@@ -528,95 +528,95 @@ namespace P2P_UAQ_Server.Core
 
 
 
-        public void GetVideoFrames(string inputPath, string framesPath)
-        {
-            FFMpegArguments
-                .FromFileInput(inputPath)
-                .OutputToFile($"{framesPath}\\frame%08d.bmp") // indicates the nomeclature i.e. 15th frame = frame00000015.bmp
-                .ProcessSynchronously();
+        //public void GetVideoFrames(string inputPath, string framesPath)
+        //{
+        //    FFMpegArguments
+        //        .FromFileInput(inputPath)
+        //        .OutputToFile($"{framesPath}\\frame%08d.bmp") // indicates the nomeclature i.e. 15th frame = frame00000015.bmp
+        //        .ProcessSynchronously();
 
-            HandlerOnMessageReceived($"Imágenes extraídas con éxito.");
-        }
-
-
-
-        public void GetVideoMeta(string inputPath)
-        {
-
-            IMediaAnalysis mediaInfo = FFProbe.Analyse(inputPath);
-
-            // if not data return default values
-
-            double framerate = mediaInfo.PrimaryVideoStream?.FrameRate ?? 30;
-            string name = Path.GetFileNameWithoutExtension(inputPath) ?? "Unknown_Video";
-            string codec = mediaInfo.PrimaryVideoStream?.CodecName ?? "h264";
-            string videoExtension = Path.GetExtension(inputPath).TrimStart('.') ?? "mp4";
-            string audioExtension = mediaInfo.PrimaryAudioStream?.CodecName ?? "mp3";
-
-            HandlerOnMessageReceived($"Metada extradida");
-
-            _videoFramerate = framerate;
-            _videoName = name;
-            _videoCodec = codec;
-            _videoExtension = videoExtension;
-            _videoAudioExtension = audioExtension;
-
-        }
+        //    HandlerOnMessageReceived($"Imágenes extraídas con éxito.");
+        //}
 
 
 
-        public void GetVideoAudio(string inputPath, string outputAudioPath, string audioExtension)
-        {
-            // saving audio according to audio format compatible with video format
+        //public void GetVideoMeta(string inputPath)
+        //{
 
-            string arguments = $"-i \"{inputPath}\" -vn -acodec copy \"{outputAudioPath}\\audio.{audioExtension}\"";
+        //    IMediaAnalysis mediaInfo = FFProbe.Analyse(inputPath);
 
-            Process ffmpegProcess = new Process
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = _ffmpegPathString,
-                    Arguments = arguments,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardError = true
-                }
-            };
+        //    // if not data return default values
 
-            ffmpegProcess.Start();
-            ffmpegProcess.WaitForExit();
+        //    double framerate = mediaInfo.PrimaryVideoStream?.FrameRate ?? 30;
+        //    string name = Path.GetFileNameWithoutExtension(inputPath) ?? "Unknown_Video";
+        //    string codec = mediaInfo.PrimaryVideoStream?.CodecName ?? "h264";
+        //    string videoExtension = Path.GetExtension(inputPath).TrimStart('.') ?? "mp4";
+        //    string audioExtension = mediaInfo.PrimaryAudioStream?.CodecName ?? "mp3";
 
-            HandlerOnMessageReceived($"Audios extraido con éxito");
-        }
+        //    HandlerOnMessageReceived($"Metada extradida");
 
+        //    _videoFramerate = framerate;
+        //    _videoName = name;
+        //    _videoCodec = codec;
+        //    _videoExtension = videoExtension;
+        //    _videoAudioExtension = audioExtension;
+
+        //}
 
 
-        public void CreateVideoWithFramesAndSound(string imagePath, string audioInputPath, string videoOutputPath, double frameRate, string videoExtension, string audioExtension)
-        {
-            string arguments = $"-framerate {frameRate} -i \"{imagePath}\\frame%08d.bmp\" -i \"{audioInputPath}\\audio.{audioExtension}\" -c:v libx264 -pix_fmt yuv420p -c:a {audioExtension} -strict experimental \"{videoOutputPath}\\NEW_VIDEO.{videoExtension}\"";
 
-            Process ffmpeg = new Process
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = _ffmpegPathString,
-                    Arguments = arguments,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardError = true
-                }
-            };
+        //public void GetVideoAudio(string inputPath, string outputAudioPath, string audioExtension)
+        //{
+        //    // saving audio according to audio format compatible with video format
 
-            ffmpeg.Start();
-            string errorOutput = ffmpeg.StandardError.ReadToEnd();
-            ffmpeg.WaitForExit();
+        //    string arguments = $"-i \"{inputPath}\" -vn -acodec copy \"{outputAudioPath}\\audio.{audioExtension}\"";
 
-            if (!string.IsNullOrEmpty(errorOutput))
-            {
-                Console.WriteLine("FFmpeg Error Output:");
-                Console.WriteLine(errorOutput);
-            }
-        }
+        //    Process ffmpegProcess = new Process
+        //    {
+        //        StartInfo = new ProcessStartInfo
+        //        {
+        //            FileName = _ffmpegPathString,
+        //            Arguments = arguments,
+        //            UseShellExecute = false,
+        //            CreateNoWindow = true,
+        //            RedirectStandardError = true
+        //        }
+        //    };
+
+        //    ffmpegProcess.Start();
+        //    ffmpegProcess.WaitForExit();
+
+        //    HandlerOnMessageReceived($"Audios extraido con éxito");
+        //}
+
+
+
+        //public void CreateVideoWithFramesAndSound(string imagePath, string audioInputPath, string videoOutputPath, double frameRate, string videoExtension, string audioExtension)
+        //{
+        //    string arguments = $"-framerate {frameRate} -i \"{imagePath}\\frame%08d.bmp\" -i \"{audioInputPath}\\audio.{audioExtension}\" -c:v libx264 -pix_fmt yuv420p -c:a {audioExtension} -strict experimental \"{videoOutputPath}\\NEW_VIDEO.{videoExtension}\"";
+
+        //    Process ffmpeg = new Process
+        //    {
+        //        StartInfo = new ProcessStartInfo
+        //        {
+        //            FileName = _ffmpegPathString,
+        //            Arguments = arguments,
+        //            UseShellExecute = false,
+        //            CreateNoWindow = true,
+        //            RedirectStandardError = true
+        //        }
+        //    };
+
+        //    ffmpeg.Start();
+        //    string errorOutput = ffmpeg.StandardError.ReadToEnd();
+        //    ffmpeg.WaitForExit();
+
+        //    if (!string.IsNullOrEmpty(errorOutput))
+        //    {
+        //        Console.WriteLine("FFmpeg Error Output:");
+        //        Console.WriteLine(errorOutput);
+        //    }
+        //}
 
 
 
@@ -671,29 +671,6 @@ namespace P2P_UAQ_Server.Core
             }
         }
 
-
-
-        public void CheckCompressionOfImagesInFolder(string folderPath)
-        {
-            string[] imageFiles = Directory.GetFiles(folderPath, "*.*", SearchOption.TopDirectoryOnly)
-                    .Where(s => s.EndsWith(".bmp")).ToArray();
-
-            double sumCompressed = 0;
-            double sumDecompressed = 0;
-
-            foreach (string imagePath in imageFiles)
-            {
-                byte[] imageBytes = File.ReadAllBytes(imagePath);
-                byte[] imageCompressed = CompressByteArray(imageBytes);
-                byte[] imageDecompressed = DecompressByteArray(imageCompressed);
-                sumCompressed += GetSize(imageCompressed);
-                sumDecompressed += GetSize(imageDecompressed);
-
-                Console.WriteLine($"Original: {GetSize(imageBytes)}, Comprimida: {GetSize(imageCompressed)}, Descomprimida: {GetSize(imageDecompressed)}");
-            }
-
-            Console.WriteLine($"Promedio sin comprimir: {sumDecompressed / imageFiles.Length}, Promedio comprimido: {sumCompressed / imageFiles.Length}, Mejora: {sumCompressed / sumDecompressed}");
-        }
 
 
         public int GetSize(byte[] image)
