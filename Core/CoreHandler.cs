@@ -11,8 +11,8 @@ using System.Threading;
 using P2P_UAQ_Server.Core.Events;
 using P2P_UAQ_Server.ViewModels;
 using P2P_UAQ_Server.Views;
+using P2P_UAQ_Server.Models;
 using System.Windows;
-using FFMpegCore;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
@@ -48,15 +48,6 @@ namespace P2P_UAQ_Server.Core
         private string? _processedImgsPath; // subfolder in main folder, for images from SP
         private string? _framesPath; // subfolder in main folder, for frames
         private string? _audioPath; // subfolder in main folder, for audio
-
-
-        // datos video
-
-        private double _videoFramerate;
-        private string? _videoName;
-        private string? _videoCodec;
-        private string? _videoExtension;
-        private string? _videoAudioExtension;
 
         // datos conexiones 
         private TcpClient? _client;
@@ -167,7 +158,7 @@ namespace P2P_UAQ_Server.Core
                     AddWaitingServers(); // adds and alerts the servers
                 }
 
-                if (_serverStatus == Status.Ready)
+                if (_serverStatus == Status.Ready && _clientQueue.Count > 0)
                 {
                     // we gonna work only on the first client in the "queue" , others wait
 
@@ -181,6 +172,7 @@ namespace P2P_UAQ_Server.Core
         }
 
 
+        // TRABAJO EN UN VIDEO
 
         public async void WorkOnVideo()
         {
@@ -188,6 +180,8 @@ namespace P2P_UAQ_Server.Core
 
             if (_clientQueue.Count > 0)
             {
+                CreateTempFolders();
+
                 // chose client to work with and dekete it from the list
 
                 Connection connection = _clientQueue.ElementAt(0);
@@ -204,25 +198,28 @@ namespace P2P_UAQ_Server.Core
                 var message = JsonConvert.DeserializeObject<Message>(dataReceived);
                 var video = message.Content as Video;
 
-                // save video 
+                // save video with extension
                 _inputPath += video.Format;
                 File.WriteAllBytes(_inputPath, video.Data);
 
-                CreateTempFolders();
+                VideoManager videoManager = new VideoManager(_ffmpegPathString);
 
-                //GetVideoMeta(_inputPath);
-                //GetVideoAudio(_inputPath, _audioPath, _videoAudioExtension);
-                //GetVideoFrames(_inputPath, _framesPath);
+                videoManager.GetVideoMeta(_inputPath);
+                videoManager.GetVideoAudio(_inputPath, _audioPath);
+                videoManager.GetVideoFrames(_inputPath, _framesPath);
+
+                HandlerOnMessageReceived("Información y metada obtenida");
 
                 SendImagesToServers(_framesPath);
                 WaitForProcessedImages(_expectedImages);
 
-                //CreateVideoWithFramesAndSound(_processedImgsPath, _audioPath, _outputPath, _videoFramerate, _videoExtension, _videoAudioExtension);
+                videoManager.CreateVideoWithFramesAndSound(_processedImgsPath, _audioPath, _outputPath);
+                HandlerOnMessageReceived("Video creado y enviando al cliente");
 
                 // send the processed video
 
                 Video processedVideo = new Video {
-                    Format = _videoAudioExtension,
+                    Format = videoManager.videoExtension,
                     Data = File.ReadAllBytes(_outputPath),
                 };
 
@@ -230,6 +227,7 @@ namespace P2P_UAQ_Server.Core
                 connection.StreamWriter?.WriteLine(json);
                 connection.StreamWriter?.Flush();
 
+                HandlerOnMessageReceived("Video enviado. Limpiando información temporal");
                 DeleteTempFolders();
                 DeleteVideos();
             }
@@ -347,7 +345,8 @@ namespace P2P_UAQ_Server.Core
                 _serversWorking[server].StreamWriter?.Flush();
             }
 
-            _expectedImages = limit; // sets the numbr of reponses expceted 
+            _expectedImages = limit; // sets the numbr of reponses expceted
+            HandlerOnMessageReceived("Imágenes enviadas para su procesamiento");
         }
 
 
@@ -368,6 +367,8 @@ namespace P2P_UAQ_Server.Core
             {
                 t.Join();
             }
+
+            HandlerOnMessageReceived("Imágenes procesadas recibidas");
         }
 
         public async void ListenToServers(Connection c)
@@ -425,7 +426,7 @@ namespace P2P_UAQ_Server.Core
                     _serversWorking.Add(s);
                 }
 
-                HandlerOnMessageReceived($"Nuevos serves agregados {_serversWaiting.Count}");
+                HandlerOnMessageReceived($"Nuevos serves agregados: {_serversWaiting.Count}");
                 UpdateStatus(Status.Ready);
                 _serversWaiting.Clear();
 
@@ -446,6 +447,9 @@ namespace P2P_UAQ_Server.Core
             string json = JsonConvert.SerializeObject(message);
             connection.StreamWriter?.WriteLine(json);
             connection.StreamWriter?.Flush();
+
+            HandlerOnMessageReceived($"El cliente {connection.IpAddress}:{connection.Port} ha sido notificado");
+
         }
 
 
@@ -467,6 +471,8 @@ namespace P2P_UAQ_Server.Core
                 c.StreamWriter?.Flush();
                 clientsBeforeYou++;
             }
+
+            HandlerOnMessageReceived("Nuevos turnos enviados");
         }
 
 
@@ -479,6 +485,8 @@ namespace P2P_UAQ_Server.Core
             {
                 File.Delete(v);
             }
+
+            HandlerOnMessageReceived("Videos eliminados");
         }
 
 
@@ -505,14 +513,13 @@ namespace P2P_UAQ_Server.Core
             Directory.CreateDirectory(tmpFolderFrames);
             Directory.CreateDirectory(tmpFolderProcessedImgs);
 
-            Console.WriteLine($"Tmp Audio: {tmpFolderAudio}");
-            Console.WriteLine($"Tmp Frames: {tmpFolderFrames}");
-            Console.WriteLine($"Tmp Processed Images: {tmpFolderProcessedImgs}");
-
             _mainPath = tmpFolderMain;
             _framesPath = tmpFolderFrames;
             _audioPath = tmpFolderAudio;
             _processedImgsPath = tmpFolderProcessedImgs;
+
+
+            HandlerOnMessageReceived("Folders temporales creados");
 
         }
 
@@ -524,99 +531,8 @@ namespace P2P_UAQ_Server.Core
             Directory.Delete(_audioPath, true);
             Directory.Delete(_processedImgsPath, true);
             Directory.Delete(_mainPath, true);
+            HandlerOnMessageReceived("Folders temporales eliminados");
         }
-
-
-
-        //public void GetVideoFrames(string inputPath, string framesPath)
-        //{
-        //    FFMpegArguments
-        //        .FromFileInput(inputPath)
-        //        .OutputToFile($"{framesPath}\\frame%08d.bmp") // indicates the nomeclature i.e. 15th frame = frame00000015.bmp
-        //        .ProcessSynchronously();
-
-        //    HandlerOnMessageReceived($"Imágenes extraídas con éxito.");
-        //}
-
-
-
-        //public void GetVideoMeta(string inputPath)
-        //{
-
-        //    IMediaAnalysis mediaInfo = FFProbe.Analyse(inputPath);
-
-        //    // if not data return default values
-
-        //    double framerate = mediaInfo.PrimaryVideoStream?.FrameRate ?? 30;
-        //    string name = Path.GetFileNameWithoutExtension(inputPath) ?? "Unknown_Video";
-        //    string codec = mediaInfo.PrimaryVideoStream?.CodecName ?? "h264";
-        //    string videoExtension = Path.GetExtension(inputPath).TrimStart('.') ?? "mp4";
-        //    string audioExtension = mediaInfo.PrimaryAudioStream?.CodecName ?? "mp3";
-
-        //    HandlerOnMessageReceived($"Metada extradida");
-
-        //    _videoFramerate = framerate;
-        //    _videoName = name;
-        //    _videoCodec = codec;
-        //    _videoExtension = videoExtension;
-        //    _videoAudioExtension = audioExtension;
-
-        //}
-
-
-
-        //public void GetVideoAudio(string inputPath, string outputAudioPath, string audioExtension)
-        //{
-        //    // saving audio according to audio format compatible with video format
-
-        //    string arguments = $"-i \"{inputPath}\" -vn -acodec copy \"{outputAudioPath}\\audio.{audioExtension}\"";
-
-        //    Process ffmpegProcess = new Process
-        //    {
-        //        StartInfo = new ProcessStartInfo
-        //        {
-        //            FileName = _ffmpegPathString,
-        //            Arguments = arguments,
-        //            UseShellExecute = false,
-        //            CreateNoWindow = true,
-        //            RedirectStandardError = true
-        //        }
-        //    };
-
-        //    ffmpegProcess.Start();
-        //    ffmpegProcess.WaitForExit();
-
-        //    HandlerOnMessageReceived($"Audios extraido con éxito");
-        //}
-
-
-
-        //public void CreateVideoWithFramesAndSound(string imagePath, string audioInputPath, string videoOutputPath, double frameRate, string videoExtension, string audioExtension)
-        //{
-        //    string arguments = $"-framerate {frameRate} -i \"{imagePath}\\frame%08d.bmp\" -i \"{audioInputPath}\\audio.{audioExtension}\" -c:v libx264 -pix_fmt yuv420p -c:a {audioExtension} -strict experimental \"{videoOutputPath}\\NEW_VIDEO.{videoExtension}\"";
-
-        //    Process ffmpeg = new Process
-        //    {
-        //        StartInfo = new ProcessStartInfo
-        //        {
-        //            FileName = _ffmpegPathString,
-        //            Arguments = arguments,
-        //            UseShellExecute = false,
-        //            CreateNoWindow = true,
-        //            RedirectStandardError = true
-        //        }
-        //    };
-
-        //    ffmpeg.Start();
-        //    string errorOutput = ffmpeg.StandardError.ReadToEnd();
-        //    ffmpeg.WaitForExit();
-
-        //    if (!string.IsNullOrEmpty(errorOutput))
-        //    {
-        //        Console.WriteLine("FFmpeg Error Output:");
-        //        Console.WriteLine(errorOutput);
-        //    }
-        //}
 
 
 

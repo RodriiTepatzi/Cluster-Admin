@@ -15,13 +15,18 @@ namespace P2P_UAQ_Server.Models
         // Atributes
         private string _ffmpegPathString = "ffmpeg.exe";
 
-        public double _videoFramerate;
-        public string? _videoName;
-        public string? _videoCodec;
-        public string? _videoExtension;
-        public string? _videoAudioExtension;
+        public double videoFramerate;
+        public string? videoName;
+        public string? videoCodec;
+        public string? videoExtension;
+        public string? videoAudioExtension;
 
         // Constructor
+
+        public VideoManager(string ffmpegPath)
+        {
+            this._ffmpegPathString = ffmpegPath;
+        }
 
         // Methods
 
@@ -43,14 +48,14 @@ namespace P2P_UAQ_Server.Models
             double framerate = mediaInfo.PrimaryVideoStream?.FrameRate ?? 30;
             string name = Path.GetFileNameWithoutExtension(inputPath) ?? "Unknown_Video";
             string codec = mediaInfo.PrimaryVideoStream?.CodecName ?? "h264";
-            string videoExtension = Path.GetExtension(inputPath).TrimStart('.') ?? "mp4";
+            string videoEx = Path.GetExtension(inputPath).TrimStart('.') ?? "mp4";
             string audioExtension = mediaInfo.PrimaryAudioStream?.CodecName ?? "mp3";
 
-            _videoFramerate = framerate;
-            _videoName = name;
-            _videoCodec = codec;
-            _videoExtension = videoExtension;
-            _videoAudioExtension = audioExtension;
+            videoFramerate = framerate;
+            videoName = name;
+            videoCodec = codec;
+            videoExtension = videoEx;
+            videoAudioExtension = audioExtension;
 
         }
 
@@ -58,7 +63,7 @@ namespace P2P_UAQ_Server.Models
         {
             // saving audio according to audio format compatible with video format
 
-            string arguments = $"-i \"{inputPath}\" -vn -acodec copy \"{outputAudioPath}\\audio.{_videoAudioExtension}\"";
+            string arguments = $"-i \"{inputPath}\" -vn -acodec copy \"{outputAudioPath}\\audio.{videoAudioExtension}\"";
 
             Process ffmpegProcess = new Process
             {
@@ -79,7 +84,7 @@ namespace P2P_UAQ_Server.Models
 
         public void CreateVideoWithFramesAndSound(string imagePath, string audioInputPath, string videoOutputPath)
         {
-            string arguments = $"-framerate {_videoFramerate} -i \"{imagePath}\\frame%08d.bmp\" -i \"{audioInputPath}\\audio.{_videoAudioExtension}\" -c:v libx264 -pix_fmt yuv420p -c:a {_videoAudioExtension} -strict experimental \"{videoOutputPath}\\NEW_VIDEO.{_videoExtension}\"";
+            string arguments = $"-framerate {videoFramerate} -i \"{imagePath}\\frame%08d.bmp\" -i \"{audioInputPath}\\audio.{videoAudioExtension}\" -c:v libx264 -pix_fmt yuv420p -c:a {videoAudioExtension} -strict experimental \"{videoOutputPath}\\NEW_VIDEO.{videoExtension}\"";
 
             Process ffmpeg = new Process
             {
