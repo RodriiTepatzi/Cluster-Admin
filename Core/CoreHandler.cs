@@ -432,7 +432,6 @@ namespace P2P_UAQ_Server.Core
                 return;
             }
 
-            HandlerOnMessageReceived($"Ningún server agregado");
         }
 
 
