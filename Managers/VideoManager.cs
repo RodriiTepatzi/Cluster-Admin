@@ -8,7 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace P2P_UAQ_Server.Models
+namespace P2P_UAQ_Server.Managers
 {
     public class VideoManager
     {
@@ -25,7 +25,7 @@ namespace P2P_UAQ_Server.Models
 
         public VideoManager(string ffmpegPath)
         {
-            this._ffmpegPathString = ffmpegPath;
+            _ffmpegPathString = ffmpegPath;
         }
 
         // Methods

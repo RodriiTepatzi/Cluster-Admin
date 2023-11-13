@@ -10,14 +10,11 @@ using System.IO;
 using System.Threading;
 using P2P_UAQ_Server.Core.Events;
 using P2P_UAQ_Server.ViewModels;
-using P2P_UAQ_Server.Views;
-using P2P_UAQ_Server.Models;
+using P2P_UAQ_Server.Managers;
 using System.Windows;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
-
-
 
 namespace P2P_UAQ_Server.Core
 {
@@ -499,8 +496,6 @@ namespace P2P_UAQ_Server.Core
             string tmpFolderMain = Path.Combine(tmpPathMain, "MAIN_VIDEOTEST");
 
             Directory.CreateDirectory(tmpFolderMain);
-
-            Console.WriteLine($"Main tmp folder: {tmpFolderMain}");
 
 
             // create subfolders in main folder for frames, audio and processed images
