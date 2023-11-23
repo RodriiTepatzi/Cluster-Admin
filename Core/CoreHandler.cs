@@ -192,8 +192,8 @@ namespace P2P_UAQ_Server.Core
                 // waiting for the video
 
                 var dataReceived = connection.StreamReader!.ReadLine();
-                var message = JsonConvert.DeserializeObject<Message>(dataReceived);
-                var video = message.Content as Video;
+                Message message = JsonConvert.DeserializeObject<Message>(dataReceived);
+                Video video = JsonConvert.DeserializeObject<Video>((string)message.Content);
 
                 // save video with extension
                 _inputPath += video.Format;
@@ -215,7 +215,8 @@ namespace P2P_UAQ_Server.Core
 
                 // send the processed video
 
-                Video processedVideo = new Video {
+                Video processedVideo = new Video
+                {
                     Format = videoManager.videoExtension,
                     Data = File.ReadAllBytes(_outputPath),
                 };
@@ -283,7 +284,7 @@ namespace P2P_UAQ_Server.Core
         {
             Message message = new Message
             {
-                Type = MessageType.Data
+                Type = MessageType.Processor
             };
 
             List<byte[]> images = new List<byte[]>(GetImagesInFolder(framesPath));
@@ -354,7 +355,7 @@ namespace P2P_UAQ_Server.Core
 
             Thread[] serverThreads = new Thread[expectedAnswers];
 
-            for (int i = 0; i < expectedAnswers; i++)
+            for (int i = 0; i < expectedAnswers - 1; i++)
             {
                 serverThreads[i] = new Thread(() => ListenToServers(_serversWorking[i]));
                 serverThreads[i].Start();
