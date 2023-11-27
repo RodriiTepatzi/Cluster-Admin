@@ -31,8 +31,9 @@ namespace P2P_UAQ_Server.Core
         private List<Connection> _clientQueue = new List<Connection>();
         private List<Connection> _serversWaiting = new List<Connection>();
         private List<Connection> _serversWorking = new List<Connection>();
+		private List<Connection> _servers = new List<Connection>();
 
-        private Status _serverStatus = Status.Waiting;
+		private Status _serverStatus = Status.Waiting;
 
         // datos de path
 
@@ -46,10 +47,14 @@ namespace P2P_UAQ_Server.Core
         private string? _framesPath; // subfolder in main folder, for frames
         private string? _audioPath; // subfolder in main folder, for audio
 
-        // datos conexiones 
-        private TcpClient? _client;
-        private Connection _newConnection = new Connection(); // Variable reutilizable para los usuarios conectados
+		private Dictionary<(int, int), List<byte[]>> _processedImages = new Dictionary<(int, int), List<byte[]>>();
+		private int _serversFinished = 0;
+		private int _totalServers = 0;
 
+		// datos conexiones 
+		private TcpClient? _client;
+        private Connection _newConnection = new Connection(); // Variable reutilizable para los usuarios conectados
+		private Connection _serverConnection = new Connection();
 
         public event EventHandler<PrivateMessageReceivedEventArgs>? PrivateMessageReceived;
         public event EventHandler<MessageReceivedEventArgs>? PublicMessageReceived;
@@ -108,130 +113,185 @@ namespace P2P_UAQ_Server.Core
             {
                 _client = await _server.AcceptTcpClientAsync();
 
-                // save connection
-
                 _newConnection = new Connection();
                 _newConnection.Stream = _client.GetStream();
                 _newConnection.StreamWriter = new StreamWriter(_newConnection.Stream); // stream para enviar
                 _newConnection.StreamReader = new StreamReader(_newConnection.Stream); // stream para recibir
 
-
                 var dataReceived = _newConnection.StreamReader!.ReadLine();
-                Message message = JsonConvert.DeserializeObject<Message>(dataReceived!);
-                Connection connection = JsonConvert.DeserializeObject<Connection>((string)message.Content);
+                var message = JsonConvert.DeserializeObject<Message>(dataReceived!);
+                var connection = JsonConvert.DeserializeObject<Connection>((string)message!.Content!);
 
-                _newConnection.IpAddress = connection.IpAddress; // ip
+                _newConnection.IpAddress = connection!.IpAddress; // ip
 
                 if (object.Equals(connection.IpAddress, "0.0.0.0")) _newConnection.IpAddress = "127.0.0.1";
 
                 _newConnection.Port = connection.Port; // puerto
 
-
                 switch (message.Type)
                 {
-
                     case (MessageType.User):
-
-                        _clientQueue.Add(_newConnection); // they gonna wait their turn
+                        _clientQueue.Add(_newConnection); 
                         HandlerOnMessageReceived($"Nuevo cliente en espera {_newConnection.IpAddress}:{_newConnection.Port}");
 
-                        SendTurnToClients(_clientQueue); // sends an int
+
+                        SendTurnToClients(_clientQueue);
 
                         if (_serverStatus == Status.Busy) { SendStatusToChosenClient(Status.Busy, _newConnection); }
                         else if (_serverStatus == Status.Waiting) { SendStatusToChosenClient(Status.Waiting, _newConnection); }
+						else
+						{
+							SendStatusToClients(Status.Ready);
+						}
 
-                        break;
+						Thread thread = new Thread(ListenClient);
+						thread.Start();
+
+						break;
 
                     case (MessageType.Processor):
 
-                        _serversWaiting.Add(_newConnection);
-                        HandlerOnMessageReceived($"Nuevo server en espera {_newConnection.IpAddress}:{_newConnection.Port}");
+                        _servers.Add(_newConnection);
+						_serversWaiting.Add(_newConnection);
+						HandlerOnMessageReceived($"Nuevo server en espera {_newConnection.IpAddress}:{_newConnection.Port}");
+						AddWaitingServers();
 
-                        break;
+						if (_serverStatus == Status.Waiting)
+						{
+							AddWaitingServers();
+						}
+
+						if (_serverStatus == Status.Ready && _clientQueue.Count > 0)
+						{
+							UpdateStatus(Status.Waiting);
+						}
+
+						SendStatusToClients(Status.Ready);
+
+						//Thread thread2 = new Thread(ListenProcessor);
+						//thread2.Start();
+
+						break;
                 }
-
-                if (_serverStatus == Status.Waiting)
-                {
-                    AddWaitingServers(); // adds and alerts the servers
-                }
-
-                if (_serverStatus == Status.Ready && _clientQueue.Count > 0)
-                {
-                    // we gonna work only on the first client in the "queue" , others wait
-
-                    AddWaitingServers(); // add servers if they're waiting 
-                    UpdateStatus(Status.Busy);
-                    Thread thread = new Thread(WorkOnVideo);
-                    thread.Start();
-
-                }
-            }
+			}
         }
 
+		public async void ListenClient()
+		{
+			var connection = _newConnection;
+
+			while (true)
+			{
+				try
+				{
+					var dataReceived = await connection.StreamReader!.ReadLineAsync();
+					var message = JsonConvert.DeserializeObject<Message>(dataReceived!);
+					var video = JsonConvert.DeserializeObject<Video>((string)message!.Content!);
+
+					_inputPath += video!.Format;
+					File.WriteAllBytes(_inputPath, video.Data);
+
+					CreateTempFolders();
+
+					VideoManager videoManager = new VideoManager(_ffmpegPathString);
+
+					videoManager.GetVideoMeta(_inputPath);
+					videoManager.GetVideoAudio(_inputPath, _audioPath!);
+					videoManager.GetVideoFrames(_inputPath, _framesPath!);
+
+					HandlerOnMessageReceived("Información y metada obtenida");
+
+					SendImagesToServers(_framesPath!);
+					WaitForProcessedImages(_expectedImages);
+
+				}
+				catch
+				{
+					_clientQueue.Remove(connection);
+					HandlerOnMessageReceived($"Cliente con IP: {connection.IpAddress} se ha desconectado.");
+					break;
+				}
+				
+			}
+		}
 
         // TRABAJO EN UN VIDEO
 
-        public async void WorkOnVideo()
+        public async void ListenProcessor()
         {
-            // working on the first if queue not empty
+			// working on the first if queue not empty
 
-            if (_clientQueue.Count > 0)
-            {
-                CreateTempFolders();
+			var connectionI = _newConnection;
 
-                // chose client to work with and dekete it from the list
+			while (true)
+			{
+				try
+				{
+					if (_clientQueue.Count > 0)
+					{
+						CreateTempFolders();
 
-                Connection connection = _clientQueue.ElementAt(0);
-                _clientQueue.Remove(connection);
+						Connection connection = _clientQueue.ElementAt(0);
+						_clientQueue.Remove(connection);
 
-                // always send turn and status in that order
-                SendTurnToClients(_clientQueue);
-                SendStatusToClients(Status.Busy); // to all but not the chosen one
-                SendStatusToChosenClient(Status.Ready, connection);
+						SendTurnToClients(_clientQueue);
+						SendStatusToClients(Status.Busy);
+						SendStatusToChosenClient(Status.Ready, connection);
 
-                // waiting for the video
+						var dataReceived = await connectionI.StreamReader!.ReadLineAsync();
+						var message = JsonConvert.DeserializeObject<Message>(dataReceived!);
+						var video = JsonConvert.DeserializeObject<Video>((string)message!.Content!);
 
-                var dataReceived = connection.StreamReader!.ReadLine();
-                Message message = JsonConvert.DeserializeObject<Message>(dataReceived);
-                Video video = JsonConvert.DeserializeObject<Video>((string)message.Content);
+						_inputPath += video!.Format;
+						File.WriteAllBytes(_inputPath, video.Data);
 
-                // save video with extension
-                _inputPath += video.Format;
-                File.WriteAllBytes(_inputPath, video.Data);
+						VideoManager videoManager = new VideoManager(_ffmpegPathString);
 
-                VideoManager videoManager = new VideoManager(_ffmpegPathString);
+						videoManager.GetVideoMeta(_inputPath);
+						videoManager.GetVideoAudio(_inputPath, _audioPath!);
+						videoManager.GetVideoFrames(_inputPath, _framesPath!);
 
-                videoManager.GetVideoMeta(_inputPath);
-                videoManager.GetVideoAudio(_inputPath, _audioPath);
-                videoManager.GetVideoFrames(_inputPath, _framesPath);
+						HandlerOnMessageReceived("Información y metada obtenida");
 
-                HandlerOnMessageReceived("Información y metada obtenida");
+						SendImagesToServers(_framesPath!);
+						WaitForProcessedImages(_expectedImages);
 
-                SendImagesToServers(_framesPath);
-                WaitForProcessedImages(_expectedImages);
+						videoManager.CreateVideoWithFramesAndSound(_processedImgsPath!, _audioPath!, _outputPath);
+						HandlerOnMessageReceived("Video creado y enviando al cliente");
 
-                videoManager.CreateVideoWithFramesAndSound(_processedImgsPath, _audioPath, _outputPath);
-                HandlerOnMessageReceived("Video creado y enviando al cliente");
+						// send the processed video
 
-                // send the processed video
+						Video processedVideo = new Video
+						{
+							Format = videoManager!.videoExtension!,
+							Data = File.ReadAllBytes(_outputPath),
+						};
 
-                Video processedVideo = new Video
-                {
-                    Format = videoManager.videoExtension,
-                    Data = File.ReadAllBytes(_outputPath),
-                };
+						string json = JsonConvert.SerializeObject(processedVideo);
+						connection.StreamWriter!.WriteLine(json);
+						connection.StreamWriter!.Flush();
 
-                string json = JsonConvert.SerializeObject(processedVideo);
-                connection.StreamWriter?.WriteLine(json);
-                connection.StreamWriter?.Flush();
+						HandlerOnMessageReceived("Video enviado. Limpiando información temporal");
+						DeleteTempFolders();
+						DeleteVideos();
 
-                HandlerOnMessageReceived("Video enviado. Limpiando información temporal");
-                DeleteTempFolders();
-                DeleteVideos();
-            }
+						AddWaitingServers();
+						UpdateStatus(Status.Ready);
+					}
+					else
+					{
+						var dataReceived = await connectionI.StreamReader!.ReadLineAsync();
+					}
 
-            AddWaitingServers();
-            UpdateStatus(Status.Ready);
+
+				}
+				catch
+				{
+					_serversWaiting.Remove(connectionI);
+					HandlerOnMessageReceived($"Servidor con IP: {connectionI.IpAddress} se ha desconectado.");
+					break;
+				}
+			}
 
         }
 
@@ -253,8 +313,8 @@ namespace P2P_UAQ_Server.Core
 
             foreach (var c in _clientQueue)
             {
-                c.StreamWriter?.WriteLine(json);
-                c.StreamWriter?.Flush();
+                c.StreamWriter!.WriteLine(json);
+                c.StreamWriter!.Flush();
             }
 
         }
@@ -278,118 +338,179 @@ namespace P2P_UAQ_Server.Core
             }
         }
 
+		public void SendImagesToServers(string framesPath)
+		{
+			Message message = new Message
+			{
+				Type = MessageType.Data
+			};
+
+			var imageFiles = Directory.GetFiles(framesPath);
+			int servers = _serversWorking.Count;
+
+			int limit = servers;
+			int numImages = imageFiles.Length;
+			int range = 0;
+
+			if (numImages < servers)
+			{
+				limit = numImages;
+			}
+
+			int imagesPerServer = numImages / servers;
+			int remainingImages = numImages % servers;
+
+			for (int server = 0; server < limit; server++)
+			{
+				int initialRange = range + 1;
+
+				// asignamos las imagenes a los servers
+
+				for (int i = 0; i < imagesPerServer; i++)
+				{
+					var image = File.ReadAllBytes(imageFiles[range]);
+					SendImageToServer(image, server, initialRange, range);
+					range++;
+				}
+
+				// se reparten las imagenes sobrantes entre los primeros servers
+
+				if (remainingImages > 0)
+				{
+					var image = File.ReadAllBytes(imageFiles[range]);
+					SendImageToServer(image, server, initialRange, range);
+					remainingImages--;
+					range++;
+				}
+				else if (remainingImages == 0)
+				{
+					HandlerOnMessageReceived("Imágenes enviadas para su procesamiento");
+					int finalRange = range;
+
+					Message endOfDataMessage = new Message
+					{
+						Type = MessageType.EndOfData,
+						Content = "No hay más imágenes por enviar"
+					};
+
+					var json = JsonConvert.SerializeObject(endOfDataMessage);
+
+					foreach (var sv in _serversWorking)
+					{
+						sv.StreamWriter?.WriteLine(json);
+						sv.StreamWriter?.Flush();
+					}
+				}
+
+				
+
+				// Libera la memoria ocupada por las imágenes
+				GC.Collect();
+			}
+
+			_expectedImages = limit; // sets the numbr of reponses expceted
+		}
+
+		private void SendImageToServer(byte[] image, int server, int initialRange, int finalRange)
+		{
+			FramesData processedData = new FramesData
+			{
+				Range = (initialRange, finalRange),
+				Content = JsonConvert.SerializeObject(image),
+			};
+
+			Message message = new Message
+			{
+				Type = MessageType.Data,
+				Content = JsonConvert.SerializeObject(processedData)
+			};
+
+			var json = JsonConvert.SerializeObject(message);
 
 
-        public void SendImagesToServers(string framesPath)
-        {
-            Message message = new Message
-            {
-                Type = MessageType.Processor
-            };
-
-            List<byte[]> images = new List<byte[]>(GetImagesInFolder(framesPath));
-            int servers = _serversWorking.Count;
-
-            int limit = servers;
-            int numImages = images.Count;
-            int range = 0;
-
-            if (numImages < servers)
-            {
-                limit = numImages;
-            }
-
-            int imagesPerServer = numImages / servers;
-            int remainingImages = numImages % servers;
-
-            for (int server = 0; server < limit; server++)
-            {
-                int initialRange = range + 1;
-
-                List<byte[]> imagesForServer = new List<byte[]>();
-
-                // asignamos las imagenes a los servers
-
-                for (int i = 0; i < imagesPerServer; i++)
-                {
-                    imagesForServer.Add(images[0]);
-                    images.RemoveAt(0);
-                    range++;
-                }
-
-                // se reparten las imagenes sobrantes entre los primeros servers
-
-                if (remainingImages > 0)
-                {
-                    imagesForServer.Add(images[0]);
-                    images.RemoveAt(0);
-                    remainingImages--;
-                    range++;
-                }
-
-                int finalRange = range;
-
-                FramesData processedData = new FramesData
-                {
-                    Range = (initialRange, finalRange),
-                    Content = imagesForServer,
-                };
-
-                message.Content = processedData;
-
-                var json = JsonConvert.SerializeObject(message);
-
-                _serversWorking[server].StreamWriter?.WriteLine(json);
-                _serversWorking[server].StreamWriter?.Flush();
-            }
-
-            _expectedImages = limit; // sets the numbr of reponses expceted
-            HandlerOnMessageReceived("Imágenes enviadas para su procesamiento");
-        }
+			_serversWorking[server].StreamWriter?.WriteLine(json);
+			_serversWorking[server].StreamWriter?.Flush();
+		}
 
 
 
-        public void WaitForProcessedImages(int expected)
+		public void WaitForProcessedImages(int expected)
         {
             int expectedAnswers = expected;
 
-            Thread[] serverThreads = new Thread[expectedAnswers];
+			if (expected == 1)
+			{
+				_serverConnection = _servers[0];
+				var thread = new Thread(ListenToServers);
 
-            for (int i = 0; i < expectedAnswers - 1; i++)
-            {
-                serverThreads[i] = new Thread(() => ListenToServers(_serversWorking[i]));
-                serverThreads[i].Start();
-            }
+				thread.Start();
+			}
+			else
+			{
+				Thread[] serverThreads = new Thread[expectedAnswers];
 
-            foreach (Thread t in serverThreads)
-            {
-                t.Join();
-            }
+				for (int i = 0; i < serverThreads.Length; i++)
+				{
+					//serverThreads[i] = new Thread(() => ListenToServers(_serversWorking[i]));
+					//serverThreads[i].Start();
+				}
 
-            HandlerOnMessageReceived("Imágenes procesadas recibidas");
+				foreach (Thread t in serverThreads)
+				{
+					t.Join();
+				}
+			}
         }
 
-        public async void ListenToServers(Connection c)
-        {
-            var messageStream = c.StreamReader?.ReadLine();
-            var message = JsonConvert.DeserializeObject<Message>(messageStream);
+		public async void ListenToServers()
+		{
+			var connection = _serverConnection;
 
-            if (message.Type == MessageType.ProcessedData)
-            {
-                var processedData = message.Content as FramesData;
-                var part = processedData.Range;
-                var images = processedData.Content as List<byte[]>;
+			while (true)
+			{
+				var data = await connection.StreamReader!.ReadLineAsync();
+				var message = JsonConvert.DeserializeObject<Message>(data!);
 
-                for (int i = part.Item1; i <= part.Item2; i++)
-                {
-                    // for saving: path\frame%08d.bmp
-                    string frameName = $"frame{FrameName(i)}.bmp";
-                    File.WriteAllBytes(_processedImgsPath + FrameName, images[i]);
-                }
-            }
-        }
+				if (message!.Type == MessageType.ProcessedData)
+				{
 
-        public string FrameName(int index)
+					var processedData = JsonConvert.DeserializeObject<FramesData>(message.Content as string);
+					var part = processedData!.Range;
+					var image = JsonConvert.DeserializeObject<byte[]>(processedData.Content as string);
+
+					// Guarda la imagen procesada en el diccionario
+					if (!_processedImages.ContainsKey(part))
+					{
+						_processedImages[part] = new List<byte[]>();
+					}
+					_processedImages[part].Add(image);
+				}
+				else if (message.Type == MessageType.EndOfData)
+				{
+					_serversFinished++;
+
+					if (_serversFinished == _totalServers)
+					{
+						HandlerOnMessageReceived("Imágenes procesadas recibidas");
+						var orderedImages = _processedImages.OrderBy(pair => pair.Key.Item1)
+															.SelectMany(pair => pair.Value)
+															.ToList();
+
+						for (int i = 0; i < orderedImages.Count; i++)
+						{
+							// Para guardar: path\frame%08d.bmp
+							string frameName = $"frame{FrameName(i)}.bmp";
+							File.WriteAllBytes(_processedImgsPath + frameName, orderedImages[i]);
+						}
+
+						break;
+					}
+				}
+			}
+		}
+
+
+		public string FrameName(int index)
         {
             string numString = index.ToString();
 
@@ -424,7 +545,9 @@ namespace P2P_UAQ_Server.Core
                     _serversWorking.Add(s);
                 }
 
-                HandlerOnMessageReceived($"Nuevos serves agregados: {_serversWaiting.Count}");
+				_totalServers = _serversWorking.Count;
+
+                HandlerOnMessageReceived($"Nuevo server agregados: {_serversWaiting.Count}");
                 UpdateStatus(Status.Ready);
                 _serversWaiting.Clear();
 
@@ -450,8 +573,6 @@ namespace P2P_UAQ_Server.Core
 
         }
 
-
-
         public void SendTurnToClients(List<Connection> connections)
         {
             int clientsBeforeYou = 0;
@@ -472,8 +593,6 @@ namespace P2P_UAQ_Server.Core
 
             HandlerOnMessageReceived("Nuevos turnos enviados");
         }
-
-
 
         public void DeleteVideos()
         {
@@ -523,10 +642,10 @@ namespace P2P_UAQ_Server.Core
 
         public void DeleteTempFolders()
         {
-            Directory.Delete(_framesPath, true);
-            Directory.Delete(_audioPath, true);
-            Directory.Delete(_processedImgsPath, true);
-            Directory.Delete(_mainPath, true);
+            Directory.Delete(_framesPath!, true);
+            Directory.Delete(_audioPath!, true);
+            Directory.Delete(_processedImgsPath!, true);
+            Directory.Delete(_mainPath!, true);
             HandlerOnMessageReceived("Folders temporales eliminados");
         }
 

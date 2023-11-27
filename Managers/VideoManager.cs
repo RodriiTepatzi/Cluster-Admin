@@ -78,8 +78,10 @@ namespace P2P_UAQ_Server.Managers
             };
 
             ffmpegProcess.Start();
-            ffmpegProcess.WaitForExit();
+			if (ffmpegProcess.HasExited)
+			{
 
+			}
         }
 
         public void CreateVideoWithFramesAndSound(string imagePath, string audioInputPath, string videoOutputPath)
