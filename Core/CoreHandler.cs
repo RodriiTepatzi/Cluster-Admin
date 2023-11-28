@@ -343,38 +343,6 @@ namespace P2P_UAQ_Server.Core
 			_serversWorking[server].StreamWriter?.Flush();
 		}
 
-
-
-		public void WaitForProcessedImages(int expected)
-		{
-			int expectedAnswers = expected;
-			List<Thread> threads = new List<Thread>();
-
-			if (expected == 1)
-			{
-				_serverConnection = _serversWorking[0];
-				Thread thread = new Thread(new ThreadStart(ListenToServers));
-				threads.Add(thread);
-				thread.Start();
-			}
-			else
-			{
-				for (int i = 0; i < _serversWorking.Count; i++)
-				{
-					_serverConnection = _serversWorking[i];
-					Thread thread = new Thread(new ThreadStart(ListenToServers));
-					threads.Add(thread);
-					thread.Start();
-				}
-			}
-
-			foreach (Thread thread in threads)
-			{
-				thread.Join();
-			}
-		}
-
-
 		public async void ListenToServers()
 		{
 			var connection = _newConnection;
