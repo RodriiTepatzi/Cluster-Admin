@@ -58,6 +58,7 @@ namespace P2P_UAQ_Server.Core
 		private TcpClient? _client;
         private Connection _newConnection = new Connection(); // Variable reutilizable para los usuarios conectados
 		private Connection _serverConnection = new Connection();
+		private Connection _currentWorkingClient = new Connection();
 
         public event EventHandler<PrivateMessageReceivedEventArgs>? PrivateMessageReceived;
         public event EventHandler<MessageReceivedEventArgs>? PublicMessageReceived;
@@ -190,6 +191,8 @@ namespace P2P_UAQ_Server.Core
 					var dataReceived = await connection.StreamReader!.ReadLineAsync();
 					var message = JsonConvert.DeserializeObject<Message>(dataReceived!);
 					var video = JsonConvert.DeserializeObject<Video>((string)message!.Content!);
+
+					_currentWorkingClient = connection;
 
 					_inputPath += video!.Format;
 					_videoFormat = video!.Format;
@@ -391,8 +394,28 @@ namespace P2P_UAQ_Server.Core
 
 							HandlerOnMessageReceived("Imágenes generadas. Procediendo a generar el video.");
 
-							videoManager.CreateVideoWithFramesAndSound(_processedImgsPath!, _audioPath!, _outputPath);
+							videoManager.CreateVideoWithFramesAndSoundAsync(_processedImgsPath!, _audioPath!, _outputPath).GetAwaiter().GetResult();
+							
 							HandlerOnMessageReceived("Video creado. Enviando al cliente");
+
+							while (true)
+							{
+								if (File.Exists($"{_outputPath}\\NEW_VIDEO.{_videoFormat}"))
+								{
+									try
+									{
+										using (var stream = new FileStream($"{_outputPath}\\NEW_VIDEO.{_videoFormat}", FileMode.Open, FileAccess.Read, FileShare.None))
+										{
+											break;
+										}
+									}
+									catch (IOException)
+									{
+									}
+								}
+
+								await Task.Delay(1000);
+							}
 
 
 							Video processedVideo = new Video
@@ -401,9 +424,13 @@ namespace P2P_UAQ_Server.Core
 								Data = File.ReadAllBytes($"{_outputPath}\\NEW_VIDEO.{_videoFormat}"),
 							};
 
-							string json = JsonConvert.SerializeObject(processedVideo);
-							connection.StreamWriter!.WriteLine(json);
-							connection.StreamWriter!.Flush();
+							var messageVideo = new Message();
+							messageVideo.Type = MessageType.ProcessedData;
+							messageVideo.Content = processedVideo;
+
+							string json = JsonConvert.SerializeObject(messageVideo);
+							_currentWorkingClient.StreamWriter!.WriteLine(json);
+							_currentWorkingClient.StreamWriter!.Flush();
 
 							HandlerOnMessageReceived("Video enviado. Limpiando información temporal");
 							DeleteTempFolders();
