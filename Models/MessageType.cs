@@ -14,6 +14,6 @@ namespace P2P_UAQ_Server.Models
         ProcessedData,
         Status,
         Turn,
-		EndOfData
+		EndOfData,
 	}
 }

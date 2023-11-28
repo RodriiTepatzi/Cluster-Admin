@@ -78,9 +78,11 @@ namespace P2P_UAQ_Server.Managers
             };
 
             ffmpegProcess.Start();
+
 			if (ffmpegProcess.HasExited)
 			{
-
+				ffmpegProcess.Close();
+				ffmpegProcess.Dispose();
 			}
         }
 
@@ -102,7 +104,12 @@ namespace P2P_UAQ_Server.Managers
 
             ffmpeg.Start();
             string errorOutput = ffmpeg.StandardError.ReadToEnd();
-            ffmpeg.WaitForExit();
+
+			if (ffmpeg.HasExited)
+			{
+				ffmpeg.Close();
+				ffmpeg.Dispose();
+			}
 
             if (!string.IsNullOrEmpty(errorOutput))
             {
