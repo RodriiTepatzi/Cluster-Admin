@@ -41,8 +41,8 @@ namespace P2P_UAQ_Server.Core
         private string _ffmpegPathString = "ffmpeg.exe"; // as os system variable
 		private VideoManager videoManager;
 
-		private string _inputPath = "D:\\CLUSTER_FOLDER\\video."; // for received video
-        private string _outputPath = "D:\\CLUSTER_FOLDER";
+		private string _inputPath = "C:\\CLUSTER_FOLDER\\video."; // for received video
+        private string _outputPath = "C:\\CLUSTER_FOLDER";
 
         private string? _mainPath; // temporal main folder 
         private string? _processedImgsPath; // subfolder in main folder, for images from SP
@@ -200,14 +200,15 @@ namespace P2P_UAQ_Server.Core
 					videoManager = new VideoManager(_ffmpegPathString);
 
 					videoManager.GetVideoMeta(_inputPath);
-					videoManager.GetVideoAudio(_inputPath, _audioPath!);
-					videoManager.GetVideoFrames(_inputPath, _framesPath!);
+                    HandlerOnMessageReceived("Metada obtenida");
+                    videoManager.GetVideoFrames(_inputPath, _framesPath!);
+					HandlerOnMessageReceived("Frames obtenidos");
+                    videoManager.GetVideoAudio(_inputPath, _audioPath!);
+                    HandlerOnMessageReceived("Audio obtenido");
 
-					HandlerOnMessageReceived("Información y metada obtenida");
+                    SendImagesToServers(_framesPath!);
 
-					SendImagesToServers(_framesPath!);
-
-					//WaitForProcessedImages(_expectedImages);
+                    //WaitForProcessedImages(_expectedImages
 				}
 				catch
 				{
@@ -521,10 +522,15 @@ namespace P2P_UAQ_Server.Core
 
         public void CreateTempFolders()
         {
+
             // create a main tmp folder
 
             string tmpPathMain = Path.GetTempPath();
             string tmpFolderMain = Path.Combine(tmpPathMain, "MAIN_VIDEOTEST");
+
+            if (Directory.Exists(tmpFolderMain)) {
+                Directory.Delete(tmpFolderMain, true);
+            }
 
             Directory.CreateDirectory(tmpFolderMain);
 

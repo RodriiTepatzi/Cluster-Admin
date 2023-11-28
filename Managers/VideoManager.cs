@@ -1,4 +1,5 @@
-﻿using FFMpegCore;
+﻿using FFmpeg.AutoGen;
+using FFMpegCore;
 using FFMpegCore.Enums;
 using System;
 using System.Collections.Generic;
@@ -64,7 +65,7 @@ namespace P2P_UAQ_Server.Managers
             // saving audio according to audio format compatible with video format
 
             string arguments = $"-i \"{inputPath}\" -vn -acodec copy \"{outputAudioPath}\\audio.{videoAudioExtension}\"";
-
+            
             Process ffmpegProcess = new Process
             {
                 StartInfo = new ProcessStartInfo
@@ -77,13 +78,38 @@ namespace P2P_UAQ_Server.Managers
                 }
             };
 
-            ffmpegProcess.Start();
+            //ffmpegProcess.Start();
 
-			if (ffmpegProcess.HasExited)
-			{
-				ffmpegProcess.Close();
-				ffmpegProcess.Dispose();
-			}
+            //if (ffmpegProcess.HasExited)
+            //{
+            //	ffmpegProcess.Close();
+            //	ffmpegProcess.Dispose();
+            //}
+
+            //ffmpegProcess.WaitForExit();
+            //ffmpegProcess.Close();
+            //ffmpegProcess.Dispose();
+
+            try
+            {
+                ffmpegProcess.Start();
+
+                string output = ffmpegProcess.StandardOutput.ReadToEnd();
+                string error = ffmpegProcess.StandardError.ReadToEnd();
+
+                ffmpegProcess.WaitForExit();
+                ffmpegProcess.Close();
+                ffmpegProcess.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"An error occurred: {ex.Message}");
+            }
+            finally
+            {
+                ffmpegProcess.Close();
+                ffmpegProcess.Dispose();
+            }
         }
 
         public void CreateVideoWithFramesAndSound(string imagePath, string audioInputPath, string videoOutputPath)
@@ -102,19 +128,42 @@ namespace P2P_UAQ_Server.Managers
                 }
             };
 
-            ffmpeg.Start();
-            string errorOutput = ffmpeg.StandardError.ReadToEnd();
+            //ffmpeg.Start();
+            //string errorOutput = ffmpeg.StandardError.ReadToEnd();
 
-			if (ffmpeg.HasExited)
-			{
-				ffmpeg.Close();
-				ffmpeg.Dispose();
-			}
+            ////if (ffmpeg.HasExited)
+            ////{
+            ////	ffmpeg.Close();
+            ////	ffmpeg.Dispose();
+            ////}
+            //ffmpeg.WaitForExit();
 
-            if (!string.IsNullOrEmpty(errorOutput))
+            //if (!string.IsNullOrEmpty(errorOutput))
+            //{
+            //    Console.WriteLine("FFmpeg Error Output:");
+            //    Console.WriteLine(errorOutput);
+            //}
+
+            try
             {
-                Console.WriteLine("FFmpeg Error Output:");
-                Console.WriteLine(errorOutput);
+                ffmpeg.Start();
+
+                string output = ffmpeg.StandardOutput.ReadToEnd();
+                string error = ffmpeg.StandardError.ReadToEnd();
+
+                ffmpeg.WaitForExit();
+                ffmpeg.Close();
+                ffmpeg.Dispose();
+
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"An error occurred: {ex.Message}");
+            }
+            finally
+            {
+                ffmpeg.Close();
+                ffmpeg.Dispose();
             }
         }
     }
