@@ -455,6 +455,8 @@ namespace P2P_UAQ_Server.Core
 					_serversWorking.Remove(connection);
 
 					HandlerOnMessageReceived($"El servidor {connection.IpAddress} se ha desconectado.");
+
+					break;
 				}
 			}
 		}
