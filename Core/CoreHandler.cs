@@ -210,13 +210,11 @@ namespace P2P_UAQ_Server.Core
                     HandlerOnMessageReceived("Audio obtenido");
 
                     SendImagesToServers(_framesPath!);
-
-                    //WaitForProcessedImages(_expectedImages
 				}
 				catch
 				{
-					//_clientQueue.Remove(connection);
-					//HandlerOnMessageReceived($"Cliente con IP: {connection.IpAddress} se ha desconectado.");
+					_clientQueue.Remove(connection);
+					HandlerOnMessageReceived($"Cliente con IP: {connection.IpAddress} se ha desconectado.");
 					break;
 				}
 				
@@ -353,97 +351,110 @@ namespace P2P_UAQ_Server.Core
 
 			while (true)
 			{
-				var data = await connection.StreamReader!.ReadLineAsync();
-
-				if (data is not null)
+				try
 				{
-					var message = JsonConvert.DeserializeObject<Message>(data!);
+					var data = await connection.StreamReader!.ReadLineAsync();
 
-
-					if (message!.Type == MessageType.ProcessedData)
+					if (data is not null)
 					{
+						var message = JsonConvert.DeserializeObject<Message>(data!);
 
-						var processedData = JsonConvert.DeserializeObject<FramesData>(message.Content.ToString());
-						var part = processedData!.Range;
-						var image = Encoding.ASCII.GetBytes(processedData.Content.ToString());
 
-						// Guarda la imagen procesada en el diccionario
-						if (!_processedImages.ContainsKey(part))
+						if (message!.Type == MessageType.ProcessedData)
 						{
-							_processedImages[part] = new List<byte[]>();
-						}
-						_processedImages[part].Add(image);
-					}
-					else if (message.Type == MessageType.EndOfData)
-					{
-						_serversFinished++;
 
-						if (_serversFinished == _totalServers)
-						{
-							HandlerOnMessageReceived("Imágenes procesadas recibidas");
-							var orderedImages = _processedImages.OrderBy(pair => pair.Key.Item1)
-																.SelectMany(pair => pair.Value)
-																.ToList();
+							var processedData = JsonConvert.DeserializeObject<FramesData>(message.Content.ToString());
+							var part = processedData!.Range;
+							var image = Encoding.ASCII.GetBytes(processedData.Content.ToString());
 
-							for (int i = 0; i < orderedImages.Count; i++)
+							// Guarda la imagen procesada en el diccionario
+							if (!_processedImages.ContainsKey(part))
 							{
-								// Para guardar: path\frame%08d.bmp
-								string frameName = $"frame{FrameName(i)}.bmp";
-								File.WriteAllBytes(_processedImgsPath + "\\" + frameName, orderedImages[i]);
+								_processedImages[part] = new List<byte[]>();
 							}
+							_processedImages[part].Add(image);
+						}
+						else if (message.Type == MessageType.EndOfData)
+						{
+							_serversFinished++;
 
-							HandlerOnMessageReceived("Imágenes generadas. Procediendo a generar el video.");
-
-							videoManager.CreateVideoWithFramesAndSoundAsync(_processedImgsPath!, _audioPath!, _outputPath).GetAwaiter().GetResult();
-							
-							HandlerOnMessageReceived("Video creado. Enviando al cliente");
-
-							while (true)
+							if (_serversFinished == _totalServers)
 							{
-								if (File.Exists($"{_outputPath}\\NEW_VIDEO.{_videoFormat}"))
+								HandlerOnMessageReceived("Imágenes procesadas recibidas");
+								var orderedImages = _processedImages.OrderBy(pair => pair.Key.Item1)
+																	.SelectMany(pair => pair.Value)
+																	.ToList();
+
+								for (int i = 0; i < orderedImages.Count; i++)
 								{
-									try
-									{
-										using (var stream = new FileStream($"{_outputPath}\\NEW_VIDEO.{_videoFormat}", FileMode.Open, FileAccess.Read, FileShare.None))
-										{
-											break;
-										}
-									}
-									catch (IOException)
-									{
-									}
+									// Para guardar: path\frame%08d.bmp
+									string frameName = $"frame{FrameName(i)}.bmp";
+									File.WriteAllBytes(_processedImgsPath + "\\" + frameName, orderedImages[i]);
 								}
 
-								await Task.Delay(1000);
+								HandlerOnMessageReceived("Imágenes generadas. Procediendo a generar el video.");
+
+								videoManager.CreateVideoWithFramesAndSoundAsync(_processedImgsPath!, _audioPath!, _outputPath).GetAwaiter().GetResult();
+
+								HandlerOnMessageReceived("Video creado. Enviando al cliente");
+
+								while (true)
+								{
+									if (File.Exists($"{_outputPath}\\NEW_VIDEO.{_videoFormat}"))
+									{
+										try
+										{
+											using (var stream = new FileStream($"{_outputPath}\\NEW_VIDEO.{_videoFormat}", FileMode.Open, FileAccess.Read, FileShare.None))
+											{
+												break;
+											}
+										}
+										catch (IOException)
+										{
+										}
+									}
+
+									await Task.Delay(1000);
+								}
+
+
+								Video processedVideo = new Video
+								{
+									Format = videoManager!.videoExtension!,
+									Data = File.ReadAllBytes($"{_outputPath}\\NEW_VIDEO.{_videoFormat}"),
+								};
+
+								var messageVideo = new Message();
+								messageVideo.Type = MessageType.ProcessedData;
+								messageVideo.Content = processedVideo;
+
+								string json = JsonConvert.SerializeObject(messageVideo);
+								_currentWorkingClient.StreamWriter!.WriteLine(json);
+								_currentWorkingClient.StreamWriter!.Flush();
+
+								HandlerOnMessageReceived("Video enviado. Limpiando información temporal");
+
+								_processedImages.Clear();
+								_serversFinished = 0;
+								DeleteTempFolders();
+								DeleteVideos();
+
+								GC.Collect();
+
+								AddWaitingServers();
+								UpdateStatus(Status.Ready);
 							}
-
-
-							Video processedVideo = new Video
-							{
-								Format = videoManager!.videoExtension!,
-								Data = File.ReadAllBytes($"{_outputPath}\\NEW_VIDEO.{_videoFormat}"),
-							};
-
-							var messageVideo = new Message();
-							messageVideo.Type = MessageType.ProcessedData;
-							messageVideo.Content = processedVideo;
-
-							string json = JsonConvert.SerializeObject(messageVideo);
-							_currentWorkingClient.StreamWriter!.WriteLine(json);
-							_currentWorkingClient.StreamWriter!.Flush();
-
-							HandlerOnMessageReceived("Video enviado. Limpiando información temporal");
-							DeleteTempFolders();
-							DeleteVideos();
-
-							AddWaitingServers();
-							UpdateStatus(Status.Ready);
-
-							break;
 						}
-
-						break;
 					}
+				}
+				catch (Exception ex)
+				{
+					
+					_servers.Remove(connection);
+					_serversWaiting.Remove(connection);
+					_serversWorking.Remove(connection);
+
+					HandlerOnMessageReceived($"El servidor {connection.IpAddress} se ha desconectado.");
 				}
 			}
 		}
